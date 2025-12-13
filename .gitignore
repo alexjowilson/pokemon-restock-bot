@@ -1,0 +1,42 @@
+# ----------------------------
+# Environment & Secrets
+# ----------------------------
+.env
+.env.*
+*.pem
+
+# ----------------------------
+# Python
+# ----------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# ----------------------------
+# Logs & Runtime Data
+# ----------------------------
+*.log
+data/state.json
+
+# ----------------------------
+# OS / Editor Noise
+# ----------------------------
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# ----------------------------
+# Node (if ever used)
+# ----------------------------
+node_modules/
