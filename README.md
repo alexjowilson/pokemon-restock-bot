@@ -25,7 +25,7 @@ A lightweight Discord bot that monitors major retailers for Pokémon TCG restock
 ---
 
 ## 📁 Project Structure
-'''text 
+```text 
 pokemon-restock-bot/
 ├─ bot/ # Discord client & notifications
 ├─ monitors/ # Retailer-specific stock checkers
@@ -35,8 +35,7 @@ pokemon-restock-bot/
 ├─ main.py # Entry point
 ├─ .env # Environment variables (not committed)
 └─ requirements.txt
-'''
-
+```
 
 ---
 
@@ -44,5 +43,25 @@ pokemon-restock-bot/
 
 ### 1️⃣ Clone the repository
 ```bash
-git clone https://github.com/your-username/pokemon-restock-bot.git
+git clone https://github.com/alexjowilson/pokemon-restock-bot.git 
 cd pokemon-restock-bot
+```
+
+🚧 Roadmap
+
+ Walmart Pokémon TCG monitoring
+
+ Target & Amazon support
+
+ Slash commands (/status, /testalert)
+
+ Rate-limit handling & retries
+
+ Docker / systemd deployment
+
+ ⚠️ Disclaimer
+
+This project is for educational and personal use only.
+Retailer websites may have terms of service regarding automated access.
+
+Pokémon and Pokémon TCG are trademarks of Nintendo, Creatures, and GAME FREAK.
