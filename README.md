@@ -47,7 +47,7 @@ git clone https://github.com/alexjowilson/pokemon-restock-bot.git
 cd pokemon-restock-bot
 ```
 
-### 🚧 Roadmap
+## 🚧 Roadmap
 
  Walmart Pokémon TCG monitoring
 
@@ -59,7 +59,7 @@ cd pokemon-restock-bot
 
  Docker / systemd deployment
 
- ### ⚠️ Disclaimer
+## ⚠️ Disclaimer
 
 This project is for educational and personal use only.
 Retailer websites may have terms of service regarding automated access.
