@@ -1,0 +1,10 @@
+check_interval_seconds: 60
+
+discord:
+  alert_channel_name: "pokemon-alerts"
+
+products:
+  - id: "demo_pikachu"
+    name: "Pikachu Demo Product"
+    retailer: "demo"
+    url: "https://example.com/pikachu"

@@ -1,15 +1,18 @@
 import os
 import discord
+from discord import app_commands
 from dotenv import load_dotenv
 
 load_dotenv()
 
 intents = discord.Intents.default()
-client = discord.Client(intents=intents)
 
-@client.event
-async def on_ready():
-    print(f"✅ Logged in as {client.user}")
+client = discord.Client(
+    intents=intents,
+    application_id=int(os.getenv("APP_ID"))
+)
+
+tree = app_commands.CommandTree(client)
 
 def run_bot():
     client.run(os.getenv("DISCORD_TOKEN"))
