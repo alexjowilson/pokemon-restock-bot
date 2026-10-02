@@ -1,10 +1,15 @@
-check_interval_seconds: 60
+check_interval_seconds: 60  # minimum 30
 
 discord:
-  alert_channel_name: "pokemon-alerts"
+  # Right-click the channel in Discord (Developer Mode on) -> Copy Channel ID.
+  # Can also be set with ALERT_CHANNEL_ID in .env.
+  alert_channel_id: 0
+  # Optional: your server's ID. Makes slash commands appear instantly while developing.
+  # guild_id: 0
 
 products:
   - id: "demo_pikachu"
     name: "Pikachu Demo Product"
     retailer: "demo"
     url: "https://example.com/pikachu"
+    demo_in_stock: true

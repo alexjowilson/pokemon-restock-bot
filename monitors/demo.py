@@ -1,14 +1,10 @@
 async def check_product(product: dict) -> dict:
+    """Demo monitor: reports whatever `demo_in_stock` says in config.yaml.
+
+    Flip it between true and false (and restart) to watch the alert pipeline work.
     """
-    Demo monitor: always returns in_stock=True once.
-    Replace this later with Walmart/Target scraping logic.
-    """
-    print("inside check_product()")
     return {
-        "in_stock": True,
-        "price": None,
-        "url": product["url"],
-        "name": product["name"],
-        "retailer": product.get("retailer", "demo"),
+        "in_stock": bool(product.get("demo_in_stock", True)),
+        "price": product.get("demo_price"),
         "image_url": None,
     }

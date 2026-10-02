@@ -1,13 +1,15 @@
-from bot.client import client, tree, run_bot
-import bot.commands  # registers slash commands
+import logging
 
-@client.event
-async def on_ready():
-    print(f"✅ Logged in as {client.user}")
+from bot.client import RestockBot
+from utils.config import load_settings
 
-    # Sync slash commands (global)
-    await tree.sync()
-    print("✅ Slash commands synced")
+
+def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    settings = load_settings()
+    bot = RestockBot(settings)
+    bot.run(settings.discord_token, log_handler=None)  # we already configured logging
+
 
 if __name__ == "__main__":
-    run_bot()
+    main()
