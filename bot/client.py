@@ -5,6 +5,7 @@ from discord import app_commands
 
 from bot.notifier import send_restock_alert
 from bot.scheduler import Scheduler
+from monitors.http import http
 from utils.config import Settings
 
 log = logging.getLogger(__name__)
@@ -15,7 +16,8 @@ class RestockBot(discord.Client):
         super().__init__(intents=discord.Intents.default(), application_id=settings.app_id)
         self.settings = settings
         self.tree = app_commands.CommandTree(self)
-        self.scheduler = Scheduler(settings.products, settings.check_interval_seconds, self.alert)
+        self.scheduler = Scheduler(settings.products, settings.check_interval_seconds,
+                                   self.alert, self.health_message)
 
     async def setup_hook(self) -> None:
         # Runs once per process (on_ready can fire again on every reconnect).
@@ -35,9 +37,19 @@ class RestockBot(discord.Client):
         log.info("Logged in as %s", self.user)
         self.scheduler.start()
 
-    async def get_alert_channel(self) -> discord.abc.Messageable:
-        channel_id = self.settings.alert_channel_id
+    async def close(self) -> None:
+        await http.close()
+        await super().close()
+
+    async def _channel(self, channel_id: int):
         return self.get_channel(channel_id) or await self.fetch_channel(channel_id)
 
     async def alert(self, product: dict) -> None:
-        await send_restock_alert(await self.get_alert_channel(), product)
+        channel = await self._channel(self.settings.alert_channel_id)
+        await send_restock_alert(channel, product, self.settings.alert_role_id)
+
+    async def health_message(self, text: str) -> None:
+        # Falls back to the alert channel: a noisy warning beats a silent failure.
+        channel_id = self.settings.health_channel_id or self.settings.alert_channel_id
+        channel = await self._channel(channel_id)
+        await channel.send(text, allowed_mentions=discord.AllowedMentions.none())

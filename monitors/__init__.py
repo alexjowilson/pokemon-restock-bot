@@ -2,12 +2,14 @@
 
 Every monitor has the same signature:
     async def check_product(product: dict) -> dict
-and returns at least {"in_stock": bool}; optional keys: price, image_url, name, url.
-Raise an exception if the check itself failed (blocked, timeout, page changed),
-so a failed check is never mistaken for "out of stock".
+and returns at least {"in_stock": bool}; optional keys: price, image_url, cart_url.
+Raise monitors.errors.CheckFailed (or Blocked) if the check itself failed, so a
+failed check is never mistaken for "out of stock".
 """
-from monitors import demo
+from monitors import bestbuy, demo, shopify
 
 MONITORS = {
     "demo": demo.check_product,
+    "shopify": shopify.check_product,
+    "bestbuy": bestbuy.check_product,
 }

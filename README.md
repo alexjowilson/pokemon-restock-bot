@@ -56,11 +56,31 @@ cp .env.example .env   # fill in DISCORD_TOKEN and APP_ID
 
 ### How it works
 
-`bot/scheduler.py` checks every product in `config.yaml` every `check_interval_seconds`, using the monitor registered for its `retailer` in `monitors/__init__.py`. It alerts only when a product goes from out of stock to in stock, and stores last-known status in `data/state.json` so restarts don't re-alert. A failed check (timeout, blocked request) is logged and never treated as "out of stock".
+`bot/scheduler.py` checks every product in `config/config.yaml` every `check_interval_seconds`, using the monitor registered for its `retailer` in `monitors/__init__.py`. It alerts only when a product goes from out of stock to in stock, and stores last-known status in `data/state.json` so restarts don't re-alert.
+
+Reliability:
+- A failed check (timeout, blocked, bad URL) never counts as "out of stock".
+- Failures back off exponentially with jitter, harder when a site returns 403/429.
+- After 5 failures in a row the bot posts a warning (to `health_channel_id`, or the alert channel), and a note when checks recover.
+- Requests to the same site are spaced at least 2s apart, with an honest User-Agent.
+
+### Supported retailers
+
+| `retailer` | What to put in config | Notes |
+|---|---|---|
+| `shopify` | `url` of the product page (`/products/<handle>`) | Most independent card shops. No key needed. Optional `variant_id`, `store_name`. |
+| `bestbuy` | `sku` (+ `url` for the link) | Official API. Needs `BESTBUY_API_KEY`; Best Buy only issues keys to company emails. |
+| `demo` | `demo_in_stock: true/false` | For testing the pipeline. |
+
+### Slash commands
+
+- `/status`: what's being watched, last check, and any failing monitors
+- `/checknow`: checks everything right now and shows the result without alerting (use it to verify new URLs)
+- `/testalert`: posts a sample alert embed
 
 ### Adding a retailer
 
-Write `monitors/<retailer>.py` with `async def check_product(product: dict) -> dict` returning `{"in_stock": bool, "price": ..., "image_url": ...}`, raise on failure, and register it in `MONITORS`.
+Write `monitors/<retailer>.py` with `async def check_product(product: dict) -> dict` returning `{"in_stock": bool, "price": ..., "image_url": ..., "cart_url": ...}`. Fetch with `monitors.http.http.get_json`, raise `monitors.errors.CheckFailed` on failure, and register it in `MONITORS`.
 
 ### Tests
 
@@ -72,8 +92,9 @@ pip install pytest && pytest
 
 - [x] Slash commands (`/status`, `/testalert`)
 - [x] Polling loop with de-duplicated alerts
-- [ ] First real retailer monitor
-- [ ] Per-retailer rate limiting & backoff
+- [x] Shopify + Best Buy monitors
+- [x] Backoff, per-host rate limiting, health alerts
+- [ ] `/watch add` / `/watch remove` commands
 - [ ] systemd / Docker deployment on the Pi
 
 ## ⚠️ Disclaimer

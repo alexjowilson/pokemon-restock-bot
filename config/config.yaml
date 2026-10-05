@@ -1,11 +1,12 @@
 check_interval_seconds: 60  # minimum 30
 
 discord:
-  # Right-click the channel in Discord (Developer Mode on) -> Copy Channel ID.
-  # Can also be set with ALERT_CHANNEL_ID in .env.
+  # Channel IDs/role IDs: Developer Mode on, then right-click -> Copy ID.
+  # Each can also be set in .env (ALERT_CHANNEL_ID, GUILD_ID, HEALTH_CHANNEL_ID, ALERT_ROLE_ID).
   alert_channel_id: 0
-  # Optional: your server's ID. Makes slash commands appear instantly while developing.
-  # guild_id: 0
+  # guild_id: 0            # makes slash commands appear instantly in your server
+  # health_channel_id: 0   # private channel for "monitor is failing" warnings (default: alert channel)
+  # alert_role_id: 0       # role to @mention on restock alerts
 
 products:
   - id: "demo_pikachu"
@@ -13,3 +14,17 @@ products:
     retailer: "demo"
     url: "https://example.com/pikachu"
     demo_in_stock: true
+
+  # Shopify card shop: paste the product page URL (must contain /products/).
+  # - id: "shop_151_etb"
+  #   name: "Scarlet & Violet 151 ETB"
+  #   retailer: "shopify"
+  #   store_name: "My Local Card Shop"
+  #   url: "https://example-card-shop.com/products/scarlet-violet-151-elite-trainer-box"
+
+  # Best Buy (needs BESTBUY_API_KEY in .env; keys require a company email).
+  # - id: "bb_151_etb"
+  #   name: "Scarlet & Violet 151 ETB"
+  #   retailer: "bestbuy"
+  #   url: "https://www.bestbuy.com/site/..."
+  #   sku: 1234567

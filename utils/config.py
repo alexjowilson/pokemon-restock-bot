@@ -30,6 +30,8 @@ class Settings:
     app_id: int
     alert_channel_id: int
     guild_id: int | None
+    health_channel_id: int | None
+    alert_role_id: int | None
     check_interval_seconds: int
     products: list[Product]
 
@@ -51,6 +53,8 @@ def load_settings(config_path: Path = DEFAULT_CONFIG_PATH) -> Settings:
     if not channel_id:
         raise RuntimeError("Set discord.alert_channel_id in config.yaml or ALERT_CHANNEL_ID in .env")
     guild_id = os.getenv("GUILD_ID") or discord_cfg.get("guild_id")
+    health_channel_id = os.getenv("HEALTH_CHANNEL_ID") or discord_cfg.get("health_channel_id")
+    alert_role_id = os.getenv("ALERT_ROLE_ID") or discord_cfg.get("alert_role_id")
 
     products = []
     seen_ids = set()
@@ -68,6 +72,8 @@ def load_settings(config_path: Path = DEFAULT_CONFIG_PATH) -> Settings:
         app_id=int(_require_env("APP_ID")),
         alert_channel_id=int(channel_id),
         guild_id=int(guild_id) if guild_id else None,
+        health_channel_id=int(health_channel_id) if health_channel_id else None,
+        alert_role_id=int(alert_role_id) if alert_role_id else None,
         check_interval_seconds=max(30, int(raw.get("check_interval_seconds", 60))),
         products=products,
     )
