@@ -7,6 +7,17 @@ discord:
   # guild_id: 0            # makes slash commands appear instantly in your server
   # health_channel_id: 0   # private channel for "monitor is failing" warnings (default: alert channel)
   # alert_role_id: 0       # role to @mention on restock alerts
+  vote_reactions: true     # add ✅/❌ under each alert so people can vote on whether it's legit
+
+# Watch a Shopify store's search: alerts when a NEW matching listing appears, and when
+# a listing goes from unavailable to available. The first check only records what's
+# already listed, so adding a store doesn't flood the channel.
+searches:
+  - id: "dig_30th"
+    store_name: "Double Infinity Gaming"
+    store_url: "https://doubleinfinitygaming.com"
+    queries: ["30th celebration"]       # each query returns up to 10 matches; be specific
+    exclude: ["sleeve", "playmat"]      # skip titles containing any of these
 
 products:
   - id: "demo_pikachu"
@@ -14,6 +25,12 @@ products:
     retailer: "demo"
     url: "https://example.com/pikachu"
     demo_in_stock: true
+
+  - id: "dig_30th_booster_bundle"
+    name: "30th Celebration Booster Bundle"
+    retailer: "shopify"
+    store_name: "Double Infinity Gaming"
+    url: "https://doubleinfinitygaming.com/products/pokemon-tcg-30th-celebration-booster-bundle-presale-expected-release-date-october-2nd-2026"
 
   # Shopify card shop: paste the product page URL (must contain /products/).
   # - id: "shop_151_etb"

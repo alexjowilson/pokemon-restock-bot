@@ -63,3 +63,54 @@ async def check_product(product: dict) -> dict:
     if not isinstance(data, dict) or "available" not in data:
         raise CheckFailed("response doesn't look like a Shopify product")
     return parse_product(data, product)
+
+
+# ---------- keyword search (new listings) ----------
+# Shopify's predictive search (Ajax API): /search/suggest.json?q=...
+# Returns up to 10 products per query, including sold-out ones, with `available`.
+
+def _price(value):
+    """Search results give price as a "24.99" string on most themes, cents on some."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        try:
+            return round(float(value), 2)
+        except ValueError:
+            return None
+    return round(value / 100, 2) if isinstance(value, int) else round(float(value), 2)
+
+
+def parse_search_results(data: dict, store_url: str) -> list:
+    try:
+        products = data["resources"]["results"]["products"]
+    except (KeyError, TypeError):
+        raise CheckFailed("search response doesn't look like Shopify predictive search") from None
+
+    listings = []
+    for p in products:
+        path = urlsplit(p.get("url") or f"/products/{p.get('handle', '')}").path  # drop tracking params
+        image = p.get("image") or p.get("featured_image")
+        if isinstance(image, dict):
+            image = image.get("url")
+        if image and image.startswith("//"):
+            image = "https:" + image
+        listings.append({
+            "listing_id": str(p["id"]),
+            "name": p.get("title", "Untitled"),
+            "url": store_url + path,
+            "in_stock": bool(p.get("available")),
+            "price": _price(p.get("price")),
+            "image_url": image,
+        })
+    return listings
+
+
+async def search_listings(store_url: str, query: str) -> list:
+    data = await http.get_json(f"{store_url}/search/suggest.json", params={
+        "q": query,
+        "resources[type]": "product",
+        "resources[limit]": "10",
+        "resources[options][unavailable_products]": "show",  # we want sold-out listings too
+    })
+    return parse_search_results(data, store_url)

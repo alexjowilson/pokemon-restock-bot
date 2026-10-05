@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from bot.scheduler import check_once
+from bot.scheduler import check_once, search_once
 from monitors.errors import CheckFailed
 
 if TYPE_CHECKING:
@@ -51,7 +51,18 @@ def register_commands(bot: RestockBot) -> None:
             else:
                 icon = "✅ in stock" if s["in_stock"] else "❌ out of stock"
                 lines.append(f"{icon}: **{p.name}** ({p.retailer}), checked {_ago(s['last_checked'])}")
-        body = "\n".join(lines) or "No products configured."
+        searches_state = state.get("_searches", {})
+        for srch in bot.settings.searches:
+            st, h = searches_state.get(srch.id) or {}, health.get(srch.id)
+            if h:
+                lines.append(f"⚠️ 🔎 **{srch.store_name}**: failing ({h['failures']}x): `{h['last_error']}`")
+            elif "last_checked" not in st:
+                lines.append(f"⏳ 🔎 **{srch.store_name}**: not checked yet")
+            else:
+                n = len(st.get("seen", {}))
+                lines.append(f"🔎 **{srch.store_name}** ({', '.join(srch.queries)}): "
+                             f"{n} listing(s) tracked, checked {_ago(st['last_checked'])}")
+        body = "\n".join(lines) or "Nothing configured."
         await interaction.response.send_message(
             f"Checking every {bot.settings.check_interval_seconds}s\n{body}"[:2000], ephemeral=True
         )
@@ -70,5 +81,18 @@ def register_commands(bot: RestockBot) -> None:
             price = f" at ${r['price']:.2f}" if r.get("price") is not None else ""
             return f"{'✅ in stock' if r['in_stock'] else '❌ out of stock'}{price}: **{p.name}**"
 
-        lines = await asyncio.gather(*(one(p) for p in bot.settings.products))
-        await interaction.followup.send(("\n".join(lines) or "No products configured.")[:2000], ephemeral=True)
+        async def one_search(srch):
+            try:
+                listings = await search_once(srch)
+            except CheckFailed as e:
+                return f"⚠️ 🔎 **{srch.store_name}**: `{e}`"
+            if not listings:
+                return f"🔎 **{srch.store_name}**: no matches for {', '.join(srch.queries)}"
+            rows = [f"{'✅' if x['in_stock'] else '❌'} {x['name']}"
+                    + (f" (${x['price']:.2f})" if x.get("price") is not None else "") for x in listings[:8]]
+            more = f"\n…and {len(listings) - 8} more" if len(listings) > 8 else ""
+            return f"🔎 **{srch.store_name}** ({len(listings)} matches):\n" + "\n".join(rows) + more
+
+        lines = await asyncio.gather(*(one(p) for p in bot.settings.products),
+                                     *(one_search(s) for s in bot.settings.searches))
+        await interaction.followup.send(("\n".join(lines) or "Nothing configured.")[:2000], ephemeral=True)

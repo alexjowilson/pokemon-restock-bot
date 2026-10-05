@@ -25,6 +25,21 @@ class Product:
 
 
 @dataclass(frozen=True)
+class Search:
+    """Watch a Shopify store's search for new/restocked listings matching keywords."""
+    id: str
+    store_name: str
+    store_url: str
+    queries: tuple
+    exclude: tuple = ()
+    retailer: str = "shopify"
+
+    @property
+    def name(self) -> str:  # used in health messages, like Product.name
+        return f"{self.store_name} search"
+
+
+@dataclass(frozen=True)
 class Settings:
     discord_token: str
     app_id: int
@@ -34,6 +49,8 @@ class Settings:
     alert_role_id: int | None
     check_interval_seconds: int
     products: list[Product]
+    searches: list[Search] = field(default_factory=list)
+    vote_reactions: bool = True
 
 
 def _require_env(name: str) -> str:
@@ -67,6 +84,25 @@ def load_settings(config_path: Path = DEFAULT_CONFIG_PATH) -> Settings:
         products.append(Product(id=pid, name=p.pop("name"), retailer=p.pop("retailer"),
                                 url=p.pop("url"), extra=p))
 
+    searches = []
+    for raw_search in raw.get("searches", []) or []:
+        sid = raw_search["id"]
+        if sid in seen_ids:
+            raise RuntimeError(f"Duplicate id in config: {sid}")
+        seen_ids.add(sid)
+        queries = raw_search.get("queries") or []
+        if isinstance(queries, str):
+            queries = [queries]
+        if not queries:
+            raise RuntimeError(f"Search {sid} needs at least one entry in `queries`")
+        searches.append(Search(
+            id=sid,
+            store_name=raw_search.get("store_name") or raw_search["store_url"],
+            store_url=raw_search["store_url"].rstrip("/"),
+            queries=tuple(queries),
+            exclude=tuple(w.lower() for w in raw_search.get("exclude", []) or []),
+        ))
+
     return Settings(
         discord_token=_require_env("DISCORD_TOKEN"),
         app_id=int(_require_env("APP_ID")),
@@ -76,4 +112,6 @@ def load_settings(config_path: Path = DEFAULT_CONFIG_PATH) -> Settings:
         alert_role_id=int(alert_role_id) if alert_role_id else None,
         check_interval_seconds=max(30, int(raw.get("check_interval_seconds", 60))),
         products=products,
+        searches=searches,
+        vote_reactions=bool(discord_cfg.get("vote_reactions", True)),
     )

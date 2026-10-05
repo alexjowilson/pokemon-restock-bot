@@ -16,6 +16,7 @@ from typing import Awaitable, Callable, Optional
 
 from monitors import MONITORS
 from monitors.errors import Blocked, CheckFailed
+from monitors.shopify import search_listings
 from utils.config import Product
 from utils.state import load_state, save_state
 
@@ -107,6 +108,92 @@ async def run_checks(
     return state
 
 
+async def search_once(search) -> list:
+    """Run every query for one store and merge results. Raises CheckFailed on failure."""
+    merged = {}
+    try:
+        for query in search.queries:
+            for listing in await asyncio.wait_for(search_listings(search.store_url, query),
+                                                  CHECK_TIMEOUT_SECONDS):
+                title = listing["name"].lower()
+                if not any(word in title for word in search.exclude):
+                    merged[listing["listing_id"]] = listing
+    except CheckFailed:
+        raise
+    except asyncio.TimeoutError:
+        raise CheckFailed(f"search timed out after {CHECK_TIMEOUT_SECONDS}s") from None
+    except Exception as e:
+        log.exception("Unexpected error searching %s", search.id)
+        raise CheckFailed(f"bug in search: {type(e).__name__}: {e}") from e
+    return list(merged.values())
+
+
+async def _safe_search(search):
+    try:
+        return await search_once(search), None
+    except CheckFailed as e:
+        return None, e
+
+
+async def run_search_checks(
+    searches: list,
+    state: dict,
+    send_alert: AlertFn,
+    health: Optional[dict] = None,
+    send_health: Optional[HealthFn] = None,
+    now: Optional[float] = None,
+) -> dict:
+    """Alert on brand-new listings and on listings that flip to available.
+
+    The first successful pass for a search only records what's already listed
+    (otherwise adding a store would flood the channel with old products).
+    """
+    health = {} if health is None else health
+    now = time.time() if now is None else now
+    all_state = state.setdefault("_searches", {})
+
+    due = [s for s in searches if health.get(s.id, {}).get("next_try", 0) <= now]
+    results = await asyncio.gather(*(_safe_search(s) for s in due))
+
+    for search, (listings, error) in zip(due, results):
+        if error is not None:
+            await _record_failure(search, error, health, send_health, now)
+            continue
+        await _record_success(search, health, send_health)
+
+        st = all_state.setdefault(search.id, {"seen": {}})
+        baseline = not st.get("baselined")
+        for listing in listings:
+            lid = listing["listing_id"]
+            prev = st["seen"].get(lid)
+            kind = None
+            if prev is None and not baseline:
+                kind = "new"
+            elif prev is not None and listing["in_stock"] and not prev["in_stock"]:
+                kind = "restock"
+
+            if kind:
+                try:
+                    await send_alert({**listing, "id": f"{search.id}:{lid}", "kind": kind,
+                                      "retailer": search.retailer, "store_name": search.store_name})
+                    log.info("%s alert for %s: %s", kind, search.id, listing["name"])
+                except Exception:
+                    log.exception("Failed to send alert for %s", listing["name"])
+                    continue  # leave state alone so it's retried next pass
+
+            st["seen"][lid] = {
+                "name": listing["name"],
+                "in_stock": listing["in_stock"],
+                "first_seen": prev["first_seen"] if prev else int(now),
+            }
+        if baseline:
+            log.info("%s: baseline recorded (%d listings), alerting on changes from now on",
+                     search.id, len(listings))
+        st["baselined"] = True
+        st["last_checked"] = int(now)
+    return state
+
+
 async def _record_failure(product, error, health, send_health, now):
     h = health.setdefault(product.id, {"failures": 0, "alerted": False})
     h["failures"] += 1
@@ -136,8 +223,9 @@ async def _record_success(product, health, send_health):
 
 class Scheduler:
     def __init__(self, products: list, interval: int, send_alert: AlertFn,
-                 send_health: Optional[HealthFn] = None):
+                 send_health: Optional[HealthFn] = None, searches: Optional[list] = None):
         self.products = products
+        self.searches = searches or []
         self.interval = interval
         self.send_alert = send_alert
         self.send_health = send_health
@@ -150,12 +238,16 @@ class Scheduler:
             self._task = asyncio.ensure_future(self._loop())
 
     async def _loop(self) -> None:
-        log.info("Monitoring %d product(s) every %ds", len(self.products), self.interval)
+        log.info("Monitoring %d product(s) and %d store search(es) every %ds",
+                 len(self.products), len(self.searches), self.interval)
         while True:
             started = time.monotonic()
             try:
-                await run_checks(self.products, self.state, self.send_alert,
-                                 self.health, self.send_health)
+                await asyncio.gather(
+                    run_checks(self.products, self.state, self.send_alert, self.health, self.send_health),
+                    run_search_checks(self.searches, self.state, self.send_alert, self.health,
+                                      self.send_health),
+                )
                 save_state(self.state)
             except Exception:
                 log.exception("Check pass crashed; continuing")

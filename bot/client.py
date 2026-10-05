@@ -17,7 +17,7 @@ class RestockBot(discord.Client):
         self.settings = settings
         self.tree = app_commands.CommandTree(self)
         self.scheduler = Scheduler(settings.products, settings.check_interval_seconds,
-                                   self.alert, self.health_message)
+                                   self.alert, self.health_message, settings.searches)
 
     async def setup_hook(self) -> None:
         # Runs once per process (on_ready can fire again on every reconnect).
@@ -46,7 +46,8 @@ class RestockBot(discord.Client):
 
     async def alert(self, product: dict) -> None:
         channel = await self._channel(self.settings.alert_channel_id)
-        await send_restock_alert(channel, product, self.settings.alert_role_id)
+        await send_restock_alert(channel, product, self.settings.alert_role_id,
+                                 vote=self.settings.vote_reactions)
 
     async def health_message(self, text: str) -> None:
         # Falls back to the alert channel: a noisy warning beats a silent failure.
