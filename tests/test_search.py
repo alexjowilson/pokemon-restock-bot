@@ -117,3 +117,48 @@ def test_adding_a_keyword_later_does_not_flood(monkeypatch):
     run(two, {"30th celebration": sr((1, "30th ETB", True), (2, "30th UPC", True)),
               "destined rivals": sr((5, "Destined Rivals ETB", True), (6, "Destined Rivals Box", True))})
     assert sorted(sent) == [("new", "30th UPC"), ("restock", "Destined Rivals Box")]
+
+
+def test_store_channel_and_role_are_passed_to_alerts(monkeypatch):
+    routed = Search(id="s2", store_name="Card Shop", store_url=STORE,
+                    queries=("30th celebration",), channel_id=111, role_id=222)
+    state, sent = {}, []
+
+    async def fake_search(store_url, query):
+        return parse_search_results(responses.pop(0), store_url)
+
+    async def send_alert(a):
+        sent.append((a["channel_id"], a["role_id"]))
+
+    responses = [sr(), sr((9, "30th Celebration UPC", True))]
+    monkeypatch.setattr(sched, "search_listings", fake_search)
+    for _ in range(2):
+        asyncio.run(sched.run_search_checks([routed], state, send_alert, {}, None, now=1.0))
+    assert sent == [(111, 222)]
+
+
+def test_client_routes_alert_to_store_channel():
+    from types import SimpleNamespace
+    from bot.client import RestockBot
+    import bot.client as client_mod
+
+    calls = []
+
+    async def fake_send(channel, product, role_id, vote):
+        calls.append((channel, role_id))
+
+    async def fake_channel(self, cid):
+        return f"channel-{cid}"
+
+    bot = RestockBot.__new__(RestockBot)
+    bot.settings = SimpleNamespace(alert_channel_id=1, alert_role_id=5, vote_reactions=True)
+    orig = client_mod.send_restock_alert
+    client_mod.send_restock_alert = fake_send
+    RestockBot._channel, orig_channel = fake_channel, RestockBot._channel
+    try:
+        asyncio.run(bot.alert({"name": "x", "url": "u", "channel_id": 111, "role_id": 222}))
+        asyncio.run(bot.alert({"name": "x", "url": "u", "channel_id": None, "role_id": None}))
+    finally:
+        client_mod.send_restock_alert = orig
+        RestockBot._channel = orig_channel
+    assert calls == [("channel-111", 222), ("channel-1", 5)]

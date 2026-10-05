@@ -45,8 +45,11 @@ class RestockBot(discord.Client):
         return self.get_channel(channel_id) or await self.fetch_channel(channel_id)
 
     async def alert(self, product: dict) -> None:
-        channel = await self._channel(self.settings.alert_channel_id)
-        await send_restock_alert(channel, product, self.settings.alert_role_id,
+        # Per-store/per-product channel and role (from config) win over the defaults.
+        channel_id = int(product.get("channel_id") or self.settings.alert_channel_id)
+        role_id = product.get("role_id") or self.settings.alert_role_id
+        channel = await self._channel(channel_id)
+        await send_restock_alert(channel, product, int(role_id) if role_id else None,
                                  vote=self.settings.vote_reactions)
 
     async def health_message(self, text: str) -> None:

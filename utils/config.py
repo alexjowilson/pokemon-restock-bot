@@ -33,6 +33,8 @@ class Search:
     queries: tuple
     exclude: tuple = ()
     retailer: str = "shopify"
+    channel_id: int | None = None   # post this store's alerts here instead of the default channel
+    role_id: int | None = None      # role to ping for this store (overrides alert_role_id)
 
     @property
     def name(self) -> str:  # used in health messages, like Product.name
@@ -51,6 +53,11 @@ class Settings:
     products: list[Product]
     searches: list[Search] = field(default_factory=list)
     vote_reactions: bool = True
+
+
+def _optional_int(value) -> int | None:
+    """Config IDs: missing, empty or 0 all mean "not set"."""
+    return int(value) if value not in (None, "", 0, "0") else None
 
 
 def _require_env(name: str) -> str:
@@ -101,6 +108,8 @@ def load_settings(config_path: Path = DEFAULT_CONFIG_PATH) -> Settings:
             store_url=raw_search["store_url"].rstrip("/"),
             queries=tuple(queries),
             exclude=tuple(w.lower() for w in raw_search.get("exclude", []) or []),
+            channel_id=_optional_int(raw_search.get("channel_id")),
+            role_id=_optional_int(raw_search.get("role_id")),
         ))
 
     return Settings(

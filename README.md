@@ -72,6 +72,10 @@ Reliability:
 | `bestbuy` | `sku` (+ `url` for the link) | Official API. Needs `BESTBUY_API_KEY`; Best Buy only issues keys to company emails. |
 | `demo` | `demo_in_stock: true/false` | For testing the pipeline. |
 
+### Separate channels per store
+
+Add `channel_id:` (and optionally `role_id:`) to any entry under `searches:` or `products:` to send its alerts to its own channel and ping its own role. Entries without one use `alert_channel_id` / `alert_role_id`.
+
 ### Slash commands
 
 - `/status`: what's being watched, last check, and any failing monitors

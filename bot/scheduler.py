@@ -181,7 +181,8 @@ async def run_search_checks(
                 alert = {k: v for k, v in listing.items() if k != "queries"}
                 try:
                     await send_alert({**alert, "id": f"{search.id}:{lid}", "kind": kind,
-                                      "retailer": search.retailer, "store_name": search.store_name})
+                                      "retailer": search.retailer, "store_name": search.store_name,
+                                      "channel_id": search.channel_id, "role_id": search.role_id})
                     log.info("%s alert for %s: %s", kind, search.id, listing["name"])
                 except Exception:
                     log.exception("Failed to send alert for %s", listing["name"])
