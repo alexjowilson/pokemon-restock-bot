@@ -93,3 +93,27 @@ def test_new_listing_alert_layout():
                                   "kind": "new", "store_name": "Card Shop", "price": 119.99}, now=1)
     assert content == "🆕 New listing: 30th UPC [View](<https://cards.example.com/products/upc>)"
     assert embed.description.startswith("⏳ Listed, not available yet")
+
+
+def test_adding_a_keyword_later_does_not_flood(monkeypatch):
+    two = Search(id="s1", store_name="Card Shop", store_url=STORE,
+                 queries=("30th celebration", "destined rivals"))
+    state, sent = {}, []
+
+    def run(search, responses):
+        async def fake_search(store_url, query):
+            return parse_search_results(responses[query], store_url)
+
+        async def send_alert(a):
+            sent.append((a["kind"], a["name"]))
+
+        monkeypatch.setattr(sched, "search_listings", fake_search)
+        asyncio.run(sched.run_search_checks([search], state, send_alert, {}, None, now=1.0))
+
+    run(SEARCH, {"30th celebration": sr((1, "30th ETB", True))})          # baseline 30th
+    run(two, {"30th celebration": sr((1, "30th ETB", True)),
+              "destined rivals": sr((5, "Destined Rivals ETB", True), (6, "Destined Rivals Box", False))})
+    assert sent == []                                                       # new keyword: quiet first pass
+    run(two, {"30th celebration": sr((1, "30th ETB", True), (2, "30th UPC", True)),
+              "destined rivals": sr((5, "Destined Rivals ETB", True), (6, "Destined Rivals Box", True))})
+    assert sorted(sent) == [("new", "30th UPC"), ("restock", "Destined Rivals Box")]

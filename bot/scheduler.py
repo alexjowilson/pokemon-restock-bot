@@ -117,7 +117,8 @@ async def search_once(search) -> list:
                                                   CHECK_TIMEOUT_SECONDS):
                 title = listing["name"].lower()
                 if not any(word in title for word in search.exclude):
-                    merged[listing["listing_id"]] = listing
+                    entry = merged.setdefault(listing["listing_id"], {**listing, "queries": []})
+                    entry["queries"].append(query)
     except CheckFailed:
         raise
     except asyncio.TimeoutError:
@@ -162,19 +163,24 @@ async def run_search_checks(
         await _record_success(search, health, send_health)
 
         st = all_state.setdefault(search.id, {"seen": {}})
-        baseline = not st.get("baselined")
+        # Each query gets its own quiet first pass, so adding a keyword later
+        # doesn't post every existing listing for it as "new".
+        done = set(st.get("baselined_queries", []))
+        fresh = [q for q in search.queries if q not in done]
         for listing in listings:
             lid = listing["listing_id"]
             prev = st["seen"].get(lid)
+            only_fresh = all(q in fresh for q in listing.get("queries", []))
             kind = None
-            if prev is None and not baseline:
+            if prev is None and not only_fresh:
                 kind = "new"
             elif prev is not None and listing["in_stock"] and not prev["in_stock"]:
                 kind = "restock"
 
             if kind:
+                alert = {k: v for k, v in listing.items() if k != "queries"}
                 try:
-                    await send_alert({**listing, "id": f"{search.id}:{lid}", "kind": kind,
+                    await send_alert({**alert, "id": f"{search.id}:{lid}", "kind": kind,
                                       "retailer": search.retailer, "store_name": search.store_name})
                     log.info("%s alert for %s: %s", kind, search.id, listing["name"])
                 except Exception:
@@ -186,10 +192,10 @@ async def run_search_checks(
                 "in_stock": listing["in_stock"],
                 "first_seen": prev["first_seen"] if prev else int(now),
             }
-        if baseline:
-            log.info("%s: baseline recorded (%d listings), alerting on changes from now on",
-                     search.id, len(listings))
-        st["baselined"] = True
+        if fresh:
+            log.info("%s: recorded existing listings for %s; alerting on changes from now on",
+                     search.id, ", ".join(repr(q) for q in fresh))
+        st["baselined_queries"] = sorted(done | set(search.queries))
         st["last_checked"] = int(now)
     return state
 
