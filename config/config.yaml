@@ -13,11 +13,40 @@ discord:
 # a listing goes from unavailable to available. The first check only records what's
 # already listed, so adding a store doesn't flood the channel.
 searches:
-  - id: "dig_30th"
+  - id: "dig_30th"                      # keep this id: the bot's saved history uses it
     store_name: "Double Infinity Gaming"
     store_url: "https://doubleinfinitygaming.com"
-    queries: ["30th celebration"]       # each query returns up to 10 matches; be specific
-    exclude: ["sleeve", "playmat"]      # skip titles containing any of these
+    channel_id: 0                       # paste this store's channel ID (0 = main alerts channel)
+    queries: &pokemon_queries           # each query returns up to 10 matches; be specific
+      - "30th celebration"
+      - "ascended heroes"
+      - "prismatic evolutions"
+      - "destined rivals"
+      - "scarlet violet 151"
+    exclude: &pokemon_exclude ["sleeve", "playmat"]   # skip titles containing any of these
+
+  # Same keywords for more shops (*pokemon_queries reuses the list above,
+  # so you only edit keywords in one place).
+  - id: "stomping_grounds"
+    store_name: "Stomping Grounds TCG"
+    store_url: "https://www.stompinggroundstcg.com"
+    channel_id: 0                       # paste this store's channel ID (0 = main alerts channel)
+    queries: *pokemon_queries
+    exclude: *pokemon_exclude
+
+  - id: "zulus_games"
+    store_name: "Zulu's Games"
+    store_url: "https://zulusgames.com"
+    channel_id: 0                       # paste this store's channel ID (0 = main alerts channel)
+    queries: *pokemon_queries
+    exclude: *pokemon_exclude
+
+  - id: "knight_and_day"
+    store_name: "Knight and Day Games"
+    store_url: "https://knightanddaygames.com"
+    channel_id: 0                       # paste this store's channel ID (0 = main alerts channel)
+    queries: *pokemon_queries
+    exclude: *pokemon_exclude
 
 products:
   - id: "demo_pikachu"
