@@ -13,54 +13,59 @@ discord:
 # a listing goes from unavailable to available. The first check only records what's
 # already listed, so adding a store doesn't flood the channel.
 searches:
-  - id: "dig_30th"                      # keep this id: the bot's saved history uses it
+  - id: "dig_30th"                      # keep these ids: the bot's saved history uses them
     store_name: "Double Infinity Gaming"
     store_url: "https://doubleinfinitygaming.com"
     channel_id: 0                       # paste this store's channel ID (0 = main alerts channel)
-    queries: &pokemon_queries           # each query returns up to 10 matches; be specific
-      - "30th celebration"
-      - "ascended heroes"
-      - "prismatic evolutions"
-      - "destined rivals"
-      - "scarlet violet 151"
-    exclude: &pokemon_exclude ["sleeve", "playmat"]   # skip titles containing any of these
+    # Search each set for exactly the product types you want, so single cards
+    # can't crowd them out of the top-10 results.
+    queries: &pokemon_queries
+      - "30th celebration elite trainer box"
+      - "30th celebration booster bundle"
+      - "ascended heroes elite trainer box"
+      - "ascended heroes booster bundle"
+      - "prismatic evolutions elite trainer box"
+      - "prismatic evolutions booster bundle"
+      - "destined rivals elite trainer box"
+      - "destined rivals booster bundle"
+      - "151 elite trainer box"
+      - "151 booster bundle"
+    # Only alert on titles that mention Pokémon AND are an ETB or Booster Bundle.
+    require_all: &pokemon_require ["pokemon"]
+    include_any: &sealed_types ["elite trainer box", "etb", "booster bundle"]
+    exclude: &pokemon_exclude ["sleeve", "playmat"]
 
-  # Same keywords for more shops (*pokemon_queries reuses the list above,
-  # so you only edit keywords in one place).
+  # Same settings for more shops (the *names reuse the lists above,
+  # so you only edit them in one place).
   - id: "stomping_grounds"
     store_name: "Stomping Grounds TCG"
     store_url: "https://www.stompinggroundstcg.com"
-    channel_id: 0                       # paste this store's channel ID (0 = main alerts channel)
+    channel_id: 0
     queries: *pokemon_queries
+    require_all: *pokemon_require
+    include_any: *sealed_types
     exclude: *pokemon_exclude
 
   - id: "zulus_games"
     store_name: "Zulu's Games"
     store_url: "https://zulusgames.com"
-    channel_id: 0                       # paste this store's channel ID (0 = main alerts channel)
+    channel_id: 0
     queries: *pokemon_queries
+    require_all: *pokemon_require
+    include_any: *sealed_types
     exclude: *pokemon_exclude
 
   - id: "knight_and_day"
     store_name: "Knight and Day Games"
     store_url: "https://knightanddaygames.com"
-    channel_id: 0                       # paste this store's channel ID (0 = main alerts channel)
+    channel_id: 0
     queries: *pokemon_queries
+    require_all: *pokemon_require
+    include_any: *sealed_types
     exclude: *pokemon_exclude
 
-products:
-  - id: "demo_pikachu"
-    name: "Pikachu Demo Product"
-    retailer: "demo"
-    url: "https://example.com/pikachu"
-    demo_in_stock: true
-
-  - id: "dig_30th_booster_bundle"
-    name: "30th Celebration Booster Bundle"
-    retailer: "shopify"
-    store_name: "Double Infinity Gaming"
-    url: "https://doubleinfinitygaming.com/products/pokemon-tcg-30th-celebration-booster-bundle-presale-expected-release-date-october-2nd-2026"
-
+# Single product pages to watch (optional; the searches above already cover these stores).
+products: []
   # Shopify card shop: paste the product page URL (must contain /products/).
   # - id: "shop_151_etb"
   #   name: "Scarlet & Violet 151 ETB"
