@@ -90,3 +90,16 @@ def test_chunk_messages_respects_limit():
     chunks = chunk_messages(blocks, limit=500)
     assert all(len(c) <= 500 for c in chunks)
     assert "\n".join(chunks).split("\n") == blocks
+
+
+def test_checknow_links_in_stock_items_first():
+    from bot.commands import format_search_block
+    block = format_search_block("Card Shop", [
+        {"name": "151 ETB", "url": "https://shop/products/etb", "in_stock": False, "price": 49.99},
+        {"name": "151 Booster Bundle", "url": "https://shop/products/bb", "in_stock": True, "price": 26.94},
+    ])
+    assert block.split("\n") == [
+        "🔎 **Card Shop**: 1 in stock, 1 sold out",
+        "✅ [151 Booster Bundle](<https://shop/products/bb>) ($26.94)",
+        "❌ 151 ETB ($49.99)",
+    ]

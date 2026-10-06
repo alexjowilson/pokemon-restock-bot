@@ -33,6 +33,23 @@ def chunk_messages(blocks, limit: int = 1900) -> list:
     return messages
 
 
+def format_search_block(store_name: str, listings: list, limit: int = 25) -> str:
+    """In-stock items first, as clickable links; sold-out items after, as plain text."""
+    ordered = sorted(listings, key=lambda x: not x["in_stock"])
+    in_stock = sum(1 for x in listings if x["in_stock"])
+    rows = []
+    for x in ordered[:limit]:
+        price = f" (${x['price']:.2f})" if x.get("price") is not None else ""
+        if x["in_stock"]:
+            # <...> around the URL stops Discord adding a big link preview for every row
+            rows.append(f"✅ [{x['name']}](<{x['url']}>){price}")
+        else:
+            rows.append(f"❌ {x['name']}{price}")
+    more = [f"…and {len(ordered) - limit} more"] if len(ordered) > limit else []
+    header = f"🔎 **{store_name}**: {in_stock} in stock, {len(listings) - in_stock} sold out"
+    return "\n".join([header] + rows + more)
+
+
 def register_commands(bot: RestockBot) -> None:
     tree = bot.tree
 
@@ -102,11 +119,8 @@ def register_commands(bot: RestockBot) -> None:
             except CheckFailed as e:
                 return f"⚠️ 🔎 **{srch.store_name}**: `{e}`"
             if not listings:
-                return f"🔎 **{srch.store_name}**: no matches for {', '.join(srch.queries)}"
-            rows = [f"{'✅' if x['in_stock'] else '❌'} {x['name']}"
-                    + (f" (${x['price']:.2f})" if x.get("price") is not None else "") for x in listings[:8]]
-            more = f"\n…and {len(listings) - 8} more" if len(listings) > 8 else ""
-            return f"🔎 **{srch.store_name}** ({len(listings)} matches):\n" + "\n".join(rows) + more
+                return f"🔎 **{srch.store_name}**: no matching listings"
+            return format_search_block(srch.store_name, listings)
 
         blocks = await asyncio.gather(*(one(p) for p in bot.settings.products),
                                       *(one_search(s) for s in bot.settings.searches))
