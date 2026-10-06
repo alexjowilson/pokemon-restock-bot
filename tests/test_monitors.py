@@ -167,3 +167,22 @@ def test_http_client_spaces_requests_per_host():
         return time.monotonic() - start
 
     assert asyncio.run(_with_server({"/ok": ok}, run)) >= 0.6
+
+
+def test_listing_age_hours(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    two_days_ago = (datetime.now(timezone.utc) - timedelta(hours=48)).astimezone(
+        timezone(timedelta(hours=-7))).isoformat(timespec="seconds")
+    payloads = [{"published_at": two_days_ago}, {"created_at": "2020-01-01T00:00:00Z"}, {}]
+    calls = []
+
+    async def fake_get_json(url, params=None):
+        calls.append(url)
+        return payloads.pop(0)
+
+    monkeypatch.setattr(shopify.http, "get_json", fake_get_json)
+    age = asyncio.run(shopify.listing_age_hours(SHOP_URL))
+    assert 47.9 < age < 48.1 and calls[0] == SHOP_URL + ".js"
+    assert asyncio.run(shopify.listing_age_hours(SHOP_URL)) > 24 * 365
+    assert asyncio.run(shopify.listing_age_hours(SHOP_URL)) is None

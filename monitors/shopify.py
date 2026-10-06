@@ -12,6 +12,7 @@ config.yaml example:
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from urllib.parse import urlsplit, urlunsplit
 
 from monitors.errors import CheckFailed
@@ -114,3 +115,24 @@ async def search_listings(store_url: str, query: str) -> list:
         "resources[options][unavailable_products]": "show",  # we want sold-out listings too
     })
     return parse_search_results(data, store_url)
+
+
+def _parse_time(value):
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+async def listing_age_hours(url: str):
+    """Hours since the product was published (falls back to created). None if unknown."""
+    data = await http.get_json(product_js_url(url))
+    if not isinstance(data, dict):
+        return None
+    when = _parse_time(data.get("published_at")) or _parse_time(data.get("created_at"))
+    if when is None:
+        return None
+    return (datetime.now(timezone.utc) - when).total_seconds() / 3600

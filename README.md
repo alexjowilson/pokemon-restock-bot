@@ -72,6 +72,16 @@ Reliability:
 | `bestbuy` | `sku` (+ `url` for the link) | Official API. Needs `BESTBUY_API_KEY`; Best Buy only issues keys to company emails. |
 | `demo` | `demo_in_stock: true/false` | For testing the pipeline. |
 
+### Filtering store searches
+
+Card shops list thousands of single cards, and a search only returns the top 10 matches, so results shift between checks. Per search you can set:
+- `require_all`: words every title must contain (e.g. `["pokemon"]`)
+- `include_any`: at least one must appear (e.g. sealed types: `["elite trainer box", "booster", "bundle", "tin", "collection", "box"]`)
+- `exclude`: skip titles containing any of these
+- `new_listing_max_age_hours` (default 72): before posting 🆕, the bot checks the product's publish date, so old listings that drift into the results aren't announced as new.
+
+Matching ignores case and accents ("Pokémon" = "pokemon") and matches word starts ("tin" matches "Tins" but not "Destined").
+
 ### Separate channels per store
 
 Add `channel_id:` (and optionally `role_id:`) to any entry under `searches:` or `products:` to send its alerts to its own channel and ping its own role. Entries without one use `alert_channel_id` / `alert_role_id`.

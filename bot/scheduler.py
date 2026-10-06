@@ -16,7 +16,8 @@ from typing import Awaitable, Callable, Optional
 
 from monitors import MONITORS
 from monitors.errors import Blocked, CheckFailed
-from monitors.shopify import search_listings
+from monitors.shopify import listing_age_hours, search_listings
+from utils.text import title_matches
 from utils.config import Product
 from utils.state import load_state, save_state
 
@@ -115,8 +116,8 @@ async def search_once(search) -> list:
         for query in search.queries:
             for listing in await asyncio.wait_for(search_listings(search.store_url, query),
                                                   CHECK_TIMEOUT_SECONDS):
-                title = listing["name"].lower()
-                if not any(word in title for word in search.exclude):
+                if title_matches(listing["name"], search.require_all, search.include_any,
+                                 search.exclude):
                     entry = merged.setdefault(listing["listing_id"], {**listing, "queries": []})
                     entry["queries"].append(query)
     except CheckFailed:
@@ -176,6 +177,18 @@ async def run_search_checks(
                 kind = "new"
             elif prev is not None and listing["in_stock"] and not prev["in_stock"]:
                 kind = "restock"
+
+            if kind == "new":
+                # Big stores rotate old listings in and out of the top-10 results, so confirm
+                # it was actually published recently before calling it new.
+                try:
+                    age = await listing_age_hours(listing["url"])
+                except CheckFailed as e:
+                    log.warning("Couldn't verify age of %s (%s); will retry", listing["name"], e)
+                    continue
+                if age is not None and age > search.new_listing_max_age_hours:
+                    log.info("Not new (published %.0fh ago): %s", age, listing["name"])
+                    kind = None
 
             if kind:
                 alert = {k: v for k, v in listing.items() if k != "queries"}

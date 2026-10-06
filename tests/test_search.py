@@ -11,6 +11,14 @@ from utils.config import Search
 STORE = "https://cards.example.com"
 
 
+@pytest.fixture(autouse=True)
+def _no_age_lookup(monkeypatch):
+    """These tests are about search logic; treat every listing's publish date as unknown."""
+    async def unknown_age(url):
+        return None
+    monkeypatch.setattr(sched, "listing_age_hours", unknown_age)
+
+
 def sr(*items):
     return {"resources": {"results": {"products": [
         {"id": i, "title": t, "available": a, "price": "24.99",

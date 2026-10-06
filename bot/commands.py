@@ -18,6 +18,21 @@ def _ago(ts: float) -> str:
     return f"{s}s ago" if s < 120 else f"{s // 60}m ago"
 
 
+def chunk_messages(blocks, limit: int = 1900) -> list:
+    """Pack text blocks into Discord-sized messages without splitting a line."""
+    messages, current = [], ""
+    for line in "\n".join(blocks).split("\n"):
+        line = line[:limit]
+        if current and len(current) + 1 + len(line) > limit:
+            messages.append(current)
+            current = line
+        else:
+            current = f"{current}\n{line}" if current else line
+    if current:
+        messages.append(current)
+    return messages
+
+
 def register_commands(bot: RestockBot) -> None:
     tree = bot.tree
 
@@ -93,6 +108,7 @@ def register_commands(bot: RestockBot) -> None:
             more = f"\n…and {len(listings) - 8} more" if len(listings) > 8 else ""
             return f"🔎 **{srch.store_name}** ({len(listings)} matches):\n" + "\n".join(rows) + more
 
-        lines = await asyncio.gather(*(one(p) for p in bot.settings.products),
-                                     *(one_search(s) for s in bot.settings.searches))
-        await interaction.followup.send(("\n".join(lines) or "Nothing configured.")[:2000], ephemeral=True)
+        blocks = await asyncio.gather(*(one(p) for p in bot.settings.products),
+                                      *(one_search(s) for s in bot.settings.searches))
+        for chunk in chunk_messages(blocks or ["Nothing configured."]):
+            await interaction.followup.send(chunk, ephemeral=True)

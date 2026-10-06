@@ -35,6 +35,9 @@ class Search:
     retailer: str = "shopify"
     channel_id: int | None = None   # post this store's alerts here instead of the default channel
     role_id: int | None = None      # role to ping for this store (overrides alert_role_id)
+    require_all: tuple = ()         # title must contain every one of these words
+    include_any: tuple = ()         # ...and at least one of these (e.g. sealed product types)
+    new_listing_max_age_hours: float = 72  # older listings that drift into results aren't "new"
 
     @property
     def name(self) -> str:  # used in health messages, like Product.name
@@ -107,7 +110,10 @@ def load_settings(config_path: Path = DEFAULT_CONFIG_PATH) -> Settings:
             store_name=raw_search.get("store_name") or raw_search["store_url"],
             store_url=raw_search["store_url"].rstrip("/"),
             queries=tuple(queries),
-            exclude=tuple(w.lower() for w in raw_search.get("exclude", []) or []),
+            exclude=tuple(raw_search.get("exclude", []) or []),
+            require_all=tuple(raw_search.get("require_all", []) or []),
+            include_any=tuple(raw_search.get("include_any", []) or []),
+            new_listing_max_age_hours=float(raw_search.get("new_listing_max_age_hours", 72)),
             channel_id=_optional_int(raw_search.get("channel_id")),
             role_id=_optional_int(raw_search.get("role_id")),
         ))
