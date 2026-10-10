@@ -65,7 +65,7 @@ searches:
     exclude: *pokemon_exclude
 
 # Single product pages to watch (optional; the searches above already cover these stores).
-products: []
+products:
   # Shopify card shop: paste the product page URL (must contain /products/).
   # - id: "shop_151_etb"
   #   name: "Scarlet & Violet 151 ETB"
@@ -82,8 +82,14 @@ products: []
 
   # Walmart (needs WALMART_CONSUMER_ID + WALMART_PRIVATE_KEY_PATH in .env).
   # Only counts as in stock when Walmart itself sells it, unless allow_marketplace: true.
-  # - id: "wm_30th_etb"
-  #   name: "30th Celebration ETB"
-  #   retailer: "walmart"
-  #   url: "https://www.walmart.com/ip/Some-Product-Name/1234567890"
-  #   max_price: 59.99
+  # Each Walmart product uses ~1,440 API calls/day at a 60s interval; the daily limit is 5,000,
+  # so keep this list to 3 items or fewer. Optional: max_price: 59.99 to ignore marked-up prices.
+  - id: "wm_30th_etb"
+    name: "30th Celebration Elite Trainer Box"
+    retailer: "walmart"
+    url: "https://www.walmart.com/ip/Pokemon-TCG-30th-Celebration-Elite-Trainer-Box/20640569221"
+
+  - id: "wm_30th_booster_bundle"
+    name: "30th Celebration Booster Bundle"
+    retailer: "walmart"
+    url: "https://www.walmart.com/ip/Pokemon-TCG-30th-Anniversary-Booster-Bundle-Box/20717271194"
