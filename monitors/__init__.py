@@ -6,10 +6,11 @@ and returns at least {"in_stock": bool}; optional keys: price, image_url, cart_u
 Raise monitors.errors.CheckFailed (or Blocked) if the check itself failed, so a
 failed check is never mistaken for "out of stock".
 """
-from monitors import bestbuy, demo, shopify
+from monitors import bestbuy, demo, shopify, walmart
 
 MONITORS = {
     "demo": demo.check_product,
     "shopify": shopify.check_product,
     "bestbuy": bestbuy.check_product,
+    "walmart": walmart.check_product,
 }

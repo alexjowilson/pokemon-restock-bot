@@ -30,7 +30,7 @@ class HttpClient:
             )
         return self._session
 
-    async def get_json(self, url: str, params: dict | None = None):
+    async def get_json(self, url: str, params: dict | None = None, headers: dict | None = None):
         host = urlsplit(url).hostname or ""
         lock = self._locks.setdefault(host, asyncio.Lock())
         async with lock:  # one request at a time per host, spaced out
@@ -38,7 +38,7 @@ class HttpClient:
             if wait > 0:
                 await asyncio.sleep(wait)
             try:
-                async with self._session_for_loop().get(url, params=params) as resp:
+                async with self._session_for_loop().get(url, params=params, headers=headers) as resp:
                     if resp.status in (403, 429):
                         raise Blocked(f"{host} refused the request (HTTP {resp.status})")
                     if resp.status == 404:

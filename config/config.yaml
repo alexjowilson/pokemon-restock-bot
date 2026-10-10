@@ -79,3 +79,11 @@ products: []
   #   retailer: "bestbuy"
   #   url: "https://www.bestbuy.com/site/..."
   #   sku: 1234567
+
+  # Walmart (needs WALMART_CONSUMER_ID + WALMART_PRIVATE_KEY_PATH in .env).
+  # Only counts as in stock when Walmart itself sells it, unless allow_marketplace: true.
+  # - id: "wm_30th_etb"
+  #   name: "30th Celebration ETB"
+  #   retailer: "walmart"
+  #   url: "https://www.walmart.com/ip/Some-Product-Name/1234567890"
+  #   max_price: 59.99

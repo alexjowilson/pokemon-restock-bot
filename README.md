@@ -237,7 +237,23 @@ The real config uses YAML anchors (`&pokemon_queries` / `*pokemon_queries`) so e
 
 ### Single product pages (optional)
 
-To watch one specific page instead of a search, add it under `products:` with `retailer: "shopify"` and its `url` (or `retailer: "bestbuy"` with a `sku`).
+To watch one specific page instead of a search, add it under `products:` with `retailer: "shopify"` and its `url` (or `retailer: "bestbuy"` with a `sku`, or `retailer: "walmart"` with its walmart.com URL).
+
+### Walmart (official Walmart.io Affiliate API)
+
+1. Create an account and an application at [walmart.io](https://walmart.io).
+2. Generate a key pair on the Pi and keep the private key out of the repo:
+   ```bash
+   mkdir -p ~/.keys && cd ~/.keys
+   openssl genrsa -out walmart_rsa_key_pair 2048
+   openssl pkcs8 -topk8 -inform PEM -in walmart_rsa_key_pair -outform PEM -out walmart_private_key.pem -nocrypt
+   openssl rsa -in walmart_rsa_key_pair -outform PEM -pubout -out walmart_public_key.pem
+   chmod 600 walmart_rsa_key_pair walmart_private_key.pem
+   ```
+3. Upload `walmart_public_key.pem` to your Walmart.io application. Walmart gives you a **Consumer ID**.
+4. Set `WALMART_CONSUMER_ID` and `WALMART_PRIVATE_KEY_PATH` in `.env`, add a product with `retailer: "walmart"`, and run `/checknow`.
+
+By default an item only counts as in stock when **Walmart itself** sells it, so reseller listings don't trigger alerts. Set `max_price` to ignore marked-up prices, or `allow_marketplace: true` to include third-party sellers.
 
 ### Environment variables (`.env`)
 
@@ -250,6 +266,9 @@ To watch one specific page instead of a search, add it under `products:` with `r
 | `HEALTH_CHANNEL_ID` | | Private channel for ⚠️ failure warnings |
 | `ALERT_ROLE_ID` | | Role to @mention on alerts |
 | `BESTBUY_API_KEY` | | Only for the Best Buy monitor |
+| `WALMART_CONSUMER_ID` | | Only for the Walmart monitor (from Walmart.io) |
+| `WALMART_PRIVATE_KEY_PATH` | | Path to your Walmart.io private key (`.pem`), kept outside the repo |
+| `WALMART_KEY_VERSION` | | Key version shown on Walmart.io (default `1`) |
 
 ---
 
@@ -271,7 +290,8 @@ To watch one specific page instead of a search, add it under `products:` with `r
 | **Best Buy** | 🟡 Built, needs a key | Official Products API; keys require a company email |
 | **Target** | 🔜 Possible | Unofficial endpoint; not built yet |
 | **Amazon** | 🟡 Possible | Needs an Amazon Associates account (Creators API) |
-| **Walmart / Costco / Pokémon Center** | ❌ Not supported | No public API and active bot protection; this project doesn't try to get around it |
+| **Walmart** | 🟡 Built, needs a key | Official Walmart.io Affiliate API; first-party seller only by default |
+| **Costco / Pokémon Center** | ❌ Not supported | No public API and active bot protection; this project doesn't try to get around it |
 
 **Adding a retailer:** write `monitors/<name>.py` with `async def check_product(product: dict) -> dict` returning `{"in_stock": bool, "price": ..., "image_url": ..., "cart_url": ...}`. Fetch with `monitors.http.http.get_json`, raise `monitors.errors.CheckFailed` on failure, and register it in `MONITORS`.
 
@@ -298,6 +318,7 @@ The suite covers alert de-duplication, restock and new-listing detection, the pe
 - [x] ✅/❌ voting, per-store channels and role pings
 - [x] systemd deployment on Raspberry Pi 4
 - [ ] Watchdog (e.g. healthchecks.io) to alert if the Pi itself goes offline
+- [x] Walmart monitor (Walmart.io Affiliate API)
 - [ ] Target monitor
 - [ ] `/watch add` / `/watch remove` commands
 - [ ] Set-name filter

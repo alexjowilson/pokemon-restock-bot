@@ -8,7 +8,7 @@ import discord
 
 log = logging.getLogger(__name__)
 
-RETAILER_NAMES = {"bestbuy": "Best Buy", "shopify": "Shop", "demo": "Demo"}
+RETAILER_NAMES = {"bestbuy": "Best Buy", "walmart": "Walmart", "shopify": "Shop", "demo": "Demo"}
 VOTE_REACTIONS = ("✅", "❌")  # community vote: legit / not legit
 
 
@@ -32,6 +32,8 @@ def build_alert(product: dict, role_id: Optional[int] = None, now: Optional[floa
         lines.append(f"📄 [Product page]({product['url']})")
     if product.get("price") is not None:
         lines.append(f"💲 Price: ${product['price']:.2f}")
+    if str(product.get("stock_level") or "").lower() in ("limited supply", "last few items"):
+        lines.append(f"🔥 {product['stock_level']}: move fast")
     lines.append(f"🏪 {store or 'unknown'}")
 
     embed = discord.Embed(
