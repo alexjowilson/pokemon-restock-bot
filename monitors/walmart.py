@@ -182,6 +182,9 @@ _batcher = _LookupBatcher()
 async def check_product(product: dict) -> dict:
     item_id = item_id_from(product)
     item = await _batcher.get(item_id)
+    if not item and product.get("auto"):
+        # An auto-watched listing Walmart took down: treat as unavailable, not as a failure.
+        return {"in_stock": False, "price": None, "note": "no longer listed"}
     if not item:
         raise CheckFailed(f"Walmart returned no item for id {item_id}; check the URL/item_id")
     return parse_item(item, product)
@@ -256,9 +259,10 @@ async def search_many(queries, per_query: int = 10) -> tuple:
 async def search_listings(search, query: str) -> list:
     """One signed search call, newest listings first, shaped for the scheduler.
 
-    Walmart's own listings only, unless the search sets allow_marketplace: true, so
-    a reseller posting a 30th ETB at $150 never shows up as a "new listing". If
-    Walmart later starts selling it, it appears then, which is when you want to know.
+    Only Walmart's own listings are announced as new, unless the search sets
+    allow_marketplace: true, so a reseller posting a 30th ETB at $150 never pings
+    anyone. Reseller-only listings are still returned (quietly) and count as out of
+    stock, so if Walmart later sells one, it's alerted as a restock.
     """
     opts = search.options
     data = await _signed_get(SEARCH_URL, {"query": query, "numItems": "25",
@@ -267,11 +271,14 @@ async def search_listings(search, query: str) -> list:
     for item in _search_items_from(data):
         if not item.get("itemId") or not item.get("name"):
             continue
-        if not opts.get("allow_marketplace") and not is_first_party(item):
-            continue
+        # Reseller-only listings are kept (so auto-watch can notice when Walmart itself
+        # starts selling one) but never announced as "new".
+        first_party = is_first_party(item)
         parsed = parse_item(item, opts)
         listings.append({
             "listing_id": str(item["itemId"]),
+            "first_party": first_party,
+            "quiet_new": not first_party and not opts.get("allow_marketplace"),
             "name": item["name"],
             "url": item_url(item["itemId"]),
             "in_stock": parsed["in_stock"],

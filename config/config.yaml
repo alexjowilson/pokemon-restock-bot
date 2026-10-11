@@ -70,25 +70,64 @@ searches:
     include_any: *sealed_types
     exclude: *pokemon_exclude
 
-  # Walmart: catches NEW listings through the Walmart.io API (same .env keys as the
-  # Walmart products below). Walmart's own listings only, newest first. Runs every 5 min
-  # because of Walmart's 5,000 calls/day: each query = 288 calls/day at 300s.
-  # The broad queries catch any new set; the specific ones make sure a busy reseller
-  # day can't push a 30th Celebration listing out of the top 25.
-  - id: "walmart"
+  # ---------- Walmart (needs the Walmart .env keys) ----------
+  # Two searches + auto-watch, sized for Walmart's 5,000 calls/day (~4,130/day as set up):
+  #   1. "walmart"      newest listings, every 5 min        -> brand-new drops    (576/day)
+  #   2. "walmart_sets" each set by name, every hour        -> finds item pages   (672/day)
+  #      Every ETB/Booster Bundle page it finds is auto-watched: checked every minute
+  #      (20 items per API call, up to 40 items total)       -> restocks          (2,880/day)
+  # Only Walmart-sold listings alert. A reseller-only page stays watched quietly and
+  # alerts the moment Walmart itself sells it. Alerts go to retailer_channels.walmart.
+  - id: "walmart"                       # keep this id: saved history uses it
     retailer: "walmart"
+    sort: "new"
     queries:
       - "pokemon elite trainer box"
       - "pokemon booster bundle"
-      - "pokemon 30th celebration elite trainer box"
-      - "pokemon 30th celebration booster bundle"
     require_all: *pokemon_require
     include_any: *sealed_types
     exclude: *pokemon_exclude
-    # check_every_seconds: 300   # lower = faster alerts, more API calls
-    # max_price: 69.99           # skip listings priced above this
-    # allow_marketplace: false   # true = third-party sellers count too
-    # sort: "new"                # Walmart search order; "relevance" if "new" ever errors
+    check_every_seconds: 300
+
+  - id: "walmart_sets"
+    retailer: "walmart"
+    sort: "relevance"
+    auto_watch: true
+    auto_watch_max_total: 40            # Walmart items watched every minute, incl. products below
+    check_every_seconds: 3600
+    queries:                            # add a set = add its two lines (+48 calls/day)
+      - "pokemon 30th celebration elite trainer box"
+      - "pokemon 30th celebration booster bundle"
+      - "pokemon delta reign elite trainer box"
+      - "pokemon delta reign booster bundle"
+      - "pokemon pitch black elite trainer box"
+      - "pokemon pitch black booster bundle"
+      - "pokemon chaos rising elite trainer box"
+      - "pokemon chaos rising booster bundle"
+      - "pokemon perfect order elite trainer box"
+      - "pokemon perfect order booster bundle"
+      - "pokemon ascended heroes elite trainer box"
+      - "pokemon ascended heroes booster bundle"
+      - "pokemon phantasmal flames elite trainer box"
+      - "pokemon phantasmal flames booster bundle"
+      - "pokemon mega evolution elite trainer box"
+      - "pokemon mega evolution booster bundle"
+      - "pokemon prismatic evolutions elite trainer box"
+      - "pokemon prismatic evolutions booster bundle"
+      - "pokemon destined rivals elite trainer box"
+      - "pokemon destined rivals booster bundle"
+      - "pokemon journey together elite trainer box"
+      - "pokemon journey together booster bundle"
+      - "pokemon 151 elite trainer box"
+      - "pokemon 151 booster bundle"
+      - "pokemon black bolt elite trainer box"
+      - "pokemon black bolt booster bundle"
+      - "pokemon white flare elite trainer box"
+      - "pokemon white flare booster bundle"
+    require_all: *pokemon_require
+    include_any: *sealed_types
+    exclude: *pokemon_exclude
+    # max_price: 69.99                  # skip marked-up listings (applies to auto-watched items too)
 
 # Single product pages to watch (optional; the searches above already cover these stores).
 products:

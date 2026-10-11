@@ -13,6 +13,11 @@ from monitors.errors import Blocked, CheckFailed
 # Identify the bot honestly; don't pretend to be a browser.
 USER_AGENT = "pokemon-restock-bot/1.0 (+https://github.com/alexjowilson/pokemon-restock-bot)"
 
+# Official, quota-based APIs can be called faster than scraped store sites. Walmart's
+# limit is per day, so 2 req/s keeps an hourly 28-query pass from blocking the
+# per-minute restock lookup that shares this host.
+HOST_INTERVALS = {"developer.api.walmart.com": 0.5}
+
 
 class HttpClient:
     def __init__(self, min_interval_per_host: float = 2.0, timeout_seconds: float = 15):
@@ -34,7 +39,8 @@ class HttpClient:
         host = urlsplit(url).hostname or ""
         lock = self._locks.setdefault(host, asyncio.Lock())
         async with lock:  # one request at a time per host, spaced out
-            wait = self._last_request.get(host, 0) + self.min_interval - time.monotonic()
+            spacing = HOST_INTERVALS.get(host, self.min_interval)
+            wait = self._last_request.get(host, 0) + spacing - time.monotonic()
             if wait > 0:
                 await asyncio.sleep(wait)
             try:

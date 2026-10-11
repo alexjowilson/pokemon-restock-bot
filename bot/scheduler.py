@@ -14,6 +14,7 @@ import random
 import time
 from typing import Awaitable, Callable, Optional
 
+from bot import autowatch
 from monitors import MONITORS, SEARCHERS
 from monitors.errors import Blocked, CheckFailed
 from monitors.shopify import listing_age_hours
@@ -81,7 +82,10 @@ async def run_checks(
 
     for product, (result, error) in zip(due, results):
         if error is not None:
-            await _record_failure(product, error, health, send_health, now)
+            # One Walmart outage would otherwise post a warning per auto-watched item; the
+            # configured products and searches on the same API still raise the alarm.
+            quiet = product.extra.get("auto")
+            await _record_failure(product, error, health, None if quiet else send_health, now)
             continue
         await _record_success(product, health, send_health)
 
@@ -163,6 +167,7 @@ async def run_search_checks(
     health: Optional[dict] = None,
     send_health: Optional[HealthFn] = None,
     now: Optional[float] = None,
+    configured_products: Optional[list] = None,
 ) -> dict:
     """Alert on brand-new listings and on listings that flip to available.
 
@@ -193,7 +198,7 @@ async def run_search_checks(
             prev = st["seen"].get(lid)
             only_fresh = all(q in fresh for q in listing.get("queries", []))
             kind = None
-            if prev is None and not only_fresh:
+            if prev is None and not only_fresh and not listing.get("quiet_new"):
                 kind = "new"
             elif prev is not None and listing["in_stock"] and not prev["in_stock"]:
                 kind = "restock"
@@ -213,7 +218,8 @@ async def run_search_checks(
                     kind = None
 
             if kind:
-                alert = {k: v for k, v in listing.items() if k not in ("queries", "listed_at")}
+                alert = {k: v for k, v in listing.items()
+                         if k not in ("queries", "listed_at", "quiet_new", "first_party")}
                 try:
                     await send_alert({**alert, "id": f"{search.id}:{lid}", "kind": kind,
                                       "retailer": search.retailer, "store_name": search.store_name,
@@ -233,6 +239,7 @@ async def run_search_checks(
                      search.id, ", ".join(repr(q) for q in fresh))
         st["baselined_queries"] = sorted(done | set(search.queries))
         st["last_checked"] = int(now)
+        autowatch.register(state, search, listings, configured_products or [], now)
     return state
 
 
@@ -285,10 +292,11 @@ class Scheduler:
         while True:
             started = time.monotonic()
             try:
+                products = self.products + autowatch.auto_products(self.state, self.products)
                 await asyncio.gather(
-                    run_checks(self.products, self.state, self.send_alert, self.health, self.send_health),
+                    run_checks(products, self.state, self.send_alert, self.health, self.send_health),
                     run_search_checks(self.searches, self.state, self.send_alert, self.health,
-                                      self.send_health),
+                                      self.send_health, configured_products=self.products),
                 )
                 save_state(self.state)
             except Exception:

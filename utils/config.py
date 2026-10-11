@@ -105,6 +105,10 @@ def walmart_calls_per_day(products, searches, interval: int) -> int:
     """Product lookups are batched 20 ids per call; each search query is one call per pass."""
     day = 86400
     n_products = sum(1 for p in products if p.retailer == "walmart")
+    auto_caps = [int(s.options.get("auto_watch_max_total", 40)) for s in searches
+                 if s.retailer == "walmart" and s.options.get("auto_watch")]
+    if auto_caps:  # auto-watch fills the list up to its cap (configured items included)
+        n_products = max([n_products] + auto_caps)
     calls = -(-n_products // 20) * day / interval
     for s in searches:
         if s.retailer == "walmart":

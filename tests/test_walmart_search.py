@@ -36,17 +36,20 @@ def api(monkeypatch):
 def test_search_listings_shape_and_newest_first(api):
     api([wm(1, "Pokemon 30th ETB")])
     [x] = asyncio.run(walmart.search_listings(search(), "pokemon etb"))
-    assert x == {"listing_id": "1", "name": "Pokemon 30th ETB", "url": "https://www.walmart.com/ip/1",
+    assert x == {"listing_id": "1", "first_party": True, "quiet_new": False,
+                 "name": "Pokemon 30th ETB", "url": "https://www.walmart.com/ip/1",
                  "in_stock": True, "price": 49.97, "image_url": "https://img/1.jpg",
                  "cart_url": "https://affil.walmart.com/cart?items=1"}
     assert api.calls[0] == {"query": "pokemon etb", "numItems": "25", "sort": "new"}
 
 
-def test_resellers_skipped_unless_allowed(api):
+def test_resellers_kept_quietly_unless_allowed(api):
     api([wm(1, "Pokemon ETB", sold_by="CardFlipper LLC", price=149.0), wm(2, "Pokemon ETB")])
-    assert [x["listing_id"] for x in asyncio.run(walmart.search_listings(search(), "q"))] == ["2"]
-    both = asyncio.run(walmart.search_listings(search(allow_marketplace=True), "q"))
-    assert [x["listing_id"] for x in both] == ["1", "2"]
+    reseller, walmart_sold = asyncio.run(walmart.search_listings(search(), "q"))
+    assert (reseller["in_stock"], reseller["quiet_new"]) == (False, True)
+    assert (walmart_sold["in_stock"], walmart_sold["quiet_new"]) == (True, False)
+    reseller, _ = asyncio.run(walmart.search_listings(search(allow_marketplace=True), "q"))
+    assert (reseller["in_stock"], reseller["quiet_new"]) == (True, False)
 
 
 def test_max_price_means_not_buyable(api):

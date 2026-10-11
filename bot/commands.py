@@ -149,6 +149,11 @@ def register_commands(bot: RestockBot) -> None:
             else:
                 icon = "✅ in stock" if s["in_stock"] else "❌ out of stock"
                 lines.append(f"{icon}: **{p.name}** ({p.retailer}), checked {_ago(s['last_checked'])}")
+        auto = state.get("_auto_watch", {})
+        if auto:
+            in_stock = sum(1 for lid in auto if (state.get(f"auto_walmart_{lid}") or {}).get("in_stock"))
+            lines.append(f"👀 **Walmart auto-watch**: {len(auto)} item(s) found by searches, "
+                         f"{in_stock} sold by Walmart right now")
         searches_state = state.get("_searches", {})
         for srch in bot.settings.searches:
             st, h = searches_state.get(srch.id) or {}, health.get(srch.id)
