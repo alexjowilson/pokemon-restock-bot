@@ -50,7 +50,11 @@ class HttpClient:
                     if resp.status == 404:
                         raise CheckFailed(f"{host} says the product doesn't exist (404); check the URL/SKU")
                     if resp.status >= 400:
-                        raise CheckFailed(f"{host} returned HTTP {resp.status}")
+                        # The API's own explanation (e.g. "invalid start"); never the URL,
+                        # which may carry a key.
+                        detail = " ".join((await resp.text())[:200].split())
+                        raise CheckFailed(f"{host} returned HTTP {resp.status}"
+                                          + (f": {detail}" if detail else ""))
                     text = await resp.text()
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                 # Deliberately not including the URL: it may carry an API key.

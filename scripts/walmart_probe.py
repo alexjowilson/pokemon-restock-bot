@@ -24,6 +24,14 @@ SEALED = ("elite trainer box", "etb", "booster bundle")
 NOT_SEALED = ("sleeve", "sleeves", "playmat", "binder", "case for", "protector", "acrylic")
 
 
+def page_params(query: str, page: int) -> dict:
+    """Walmart counts results from 1 and rejects start=0, so page 1 sends no start."""
+    params = {"query": query, "numItems": "25"}
+    if page:
+        params["start"] = str(page * 25 + 1)
+    return params
+
+
 def shapes_for(set_name: str) -> list:
     return [
         set_name,
@@ -38,8 +46,7 @@ async def run_query(query: str, pages: int) -> tuple:
     """Returns (totalResults, items fetched, sealed matches with their page number)."""
     total, fetched, sealed = None, 0, []
     for page in range(pages):
-        params = {"query": query, "numItems": "25", "start": str(page * 25)}
-        data = await walmart._signed_get(walmart.SEARCH_URL, params)
+        data = await walmart._signed_get(walmart.SEARCH_URL, page_params(query, page))
         items = (data.get("items") or []) if isinstance(data, dict) else []
         if total is None and isinstance(data, dict):
             total = data.get("totalResults")
@@ -73,8 +80,7 @@ async def probe_set(set_name: str, pages: int) -> None:
 async def probe_raw(query: str, pages: int) -> None:
     total, fetched, _ = None, 0, None
     for page in range(pages):
-        data = await walmart._signed_get(walmart.SEARCH_URL, {"query": query, "numItems": "25",
-                                                              "start": str(page * 25)})
+        data = await walmart._signed_get(walmart.SEARCH_URL, page_params(query, page))
         items = (data.get("items") or []) if isinstance(data, dict) else []
         print(f"\n=== \"{query}\" page {page + 1}: {len(items)} items, "
               f"totalResults={data.get('totalResults') if isinstance(data, dict) else '?'}")
