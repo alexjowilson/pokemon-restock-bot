@@ -9,6 +9,7 @@ import discord
 from bot.notifier import RETAILER_NAMES
 from bot.scheduler import check_once, search_once
 from monitors.errors import CheckFailed
+from utils.text import has_word
 
 if TYPE_CHECKING:
     from bot.client import RestockBot
@@ -39,33 +40,55 @@ def store_label(product) -> str:
     return extra.get("store_name") or RETAILER_NAMES.get(product.retailer, product.retailer)
 
 
-def format_product_line(product, result: dict) -> str:
-    """One /checknow line for a single-product monitor, labelled with its store."""
-    price = result.get("price")
+def _price(x) -> str:
+    return f"${x:.2f}" if x is not None else ""
+
+
+def format_product_row(product, result: dict) -> str:
+    """One linked row for a single-product monitor. Always a link, even when only resellers have it."""
+    link = f"[{product.name}](<{product.url}>)"  # <...> stops Discord adding a big link preview
+    price = _price(result.get("price"))
     if result["in_stock"]:
-        status = "✅ in stock" + (f" at ${price:.2f}" if price is not None else "")
-    elif result.get("note"):
-        status = f"❌ out of stock ({result['note']}" + (f": ${price:.2f}" if price is not None else "") + ")"
-    else:
-        status = "❌ out of stock" + (f" at ${price:.2f}" if price is not None else "")
-    return f"🏪 **{store_label(product)}** · {status}: {product.name}"
+        return f"✅ {link}" + (f" · {price}" if price else "")
+    if result.get("note"):
+        return f"🟡 {link} · {result['note']}" + (f" {price}" if price else "")
+    return f"❌ {link}"
 
 
-def format_search_block(store_name: str, listings: list, limit: int = 25) -> str:
-    """In-stock items first, as clickable links; sold-out items after, as plain text."""
+def format_product_block(store: str, rows: list) -> str:
+    """rows: (product, result_or_None, error_or_None). Grouped under one store header."""
+    lines, in_stock, resellers = [], 0, 0
+    for product, result, error in rows:
+        if error is not None:
+            lines.append(f"⚠️ {product.name}: `{error}`")
+            continue
+        in_stock += bool(result["in_stock"])
+        resellers += bool(not result["in_stock"] and result.get("note"))
+        lines.append(format_product_row(product, result))
+    summary = f"{in_stock} in stock" + (f", {resellers} resellers only" if resellers else "")
+    return "\n".join([f"🏪 **{store}**: {summary}"] + lines)
+
+
+def format_search_block(store_name: str, listings: list, limit: int = 25,
+                        only_in_stock: bool = False) -> str:
+    """In-stock first. Every row links to the listing so you can check it yourself."""
     ordered = sorted(listings, key=lambda x: not x["in_stock"])
     in_stock = sum(1 for x in listings if x["in_stock"])
+    shown = [x for x in ordered if x["in_stock"]] if only_in_stock else ordered
     rows = []
-    for x in ordered[:limit]:
-        price = f" (${x['price']:.2f})" if x.get("price") is not None else ""
-        if x["in_stock"]:
-            # <...> around the URL stops Discord adding a big link preview for every row
-            rows.append(f"✅ [{x['name']}](<{x['url']}>){price}")
-        else:
-            rows.append(f"❌ {x['name']}{price}")
-    more = [f"…and {len(ordered) - limit} more"] if len(ordered) > limit else []
+    for x in shown[:limit]:
+        price = f" · {_price(x.get('price'))}" if x.get("price") is not None else ""
+        rows.append(f"{'✅' if x['in_stock'] else '❌'} [{x['name']}](<{x['url']}>){price}")
+    more = [f"…and {len(shown) - limit} more"] if len(shown) > limit else []
     header = f"🔎 **{store_name}**: {in_stock} in stock, {len(listings) - in_stock} sold out"
     return "\n".join([header] + rows + more)
+
+
+def matches_filter(title: str, text: str | None) -> bool:
+    """/checknow filter: every word must appear in the title ("30th etb")."""
+    if not text:
+        return True
+    return all(has_word(title, w) for w in text.split())
 
 
 def register_commands(bot: RestockBot) -> None:
@@ -117,29 +140,47 @@ def register_commands(bot: RestockBot) -> None:
             f"Checking every {bot.settings.check_interval_seconds}s\n{body}"[:2000], ephemeral=True
         )
 
-    @tree.command(name="checknow", description="Check every product right now and show what the bot sees")
+    @tree.command(name="checknow", description="Check everything right now and show what the bot sees")
+    @discord.app_commands.describe(
+        filter="Only show titles containing these words, e.g. 30th celebration",
+        only_in_stock="Hide sold-out listings",
+    )
     @discord.app_commands.default_permissions(manage_guild=True)
-    async def checknow(interaction: discord.Interaction):
+    async def checknow(interaction: discord.Interaction, filter: str | None = None,
+                       only_in_stock: bool = False):
         # Read-only: doesn't change saved state or send alerts. Use it to verify new URLs.
         await interaction.response.defer(ephemeral=True, thinking=True)
 
+        products = [p for p in bot.settings.products if matches_filter(p.name, filter)]
+
         async def one(p):
             try:
-                r = await check_once(p)
+                return p, await check_once(p), None
             except CheckFailed as e:
-                return f"⚠️ 🏪 {store_label(p)}: **{p.name}**: `{e}`"
-            return format_product_line(p, r)
+                return p, None, e
 
         async def one_search(srch):
             try:
                 listings = await search_once(srch)
             except CheckFailed as e:
                 return f"⚠️ 🔎 **{srch.store_name}**: `{e}`"
+            listings = [x for x in listings if matches_filter(x["name"], filter)]
+            if only_in_stock and not any(x["in_stock"] for x in listings):
+                return None
             if not listings:
-                return f"🔎 **{srch.store_name}**: no matching listings"
-            return format_search_block(srch.store_name, listings)
+                return None if filter else f"🔎 **{srch.store_name}**: no matching listings"
+            return format_search_block(srch.store_name, listings, only_in_stock=only_in_stock)
 
-        blocks = await asyncio.gather(*(one(p) for p in bot.settings.products),
-                                      *(one_search(s) for s in bot.settings.searches))
-        for chunk in chunk_messages(blocks or ["Nothing configured."]):
+        results = await asyncio.gather(*(one(p) for p in products))
+        by_store: dict = {}
+        for row in results:
+            _, result, error = row
+            if only_in_stock and error is None and not result["in_stock"]:
+                continue
+            by_store.setdefault(store_label(row[0]), []).append(row)
+        blocks = [format_product_block(store, rows) for store, rows in by_store.items()]
+        blocks += [b for b in await asyncio.gather(*(one_search(s) for s in bot.settings.searches)) if b]
+
+        empty = "Nothing matched." if (filter or only_in_stock) else "Nothing configured."
+        for chunk in chunk_messages(["\n\n".join(blocks)] if blocks else [empty]):
             await interaction.followup.send(chunk, ephemeral=True)

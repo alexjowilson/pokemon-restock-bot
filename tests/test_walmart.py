@@ -152,18 +152,25 @@ def test_check_product_no_items(monkeypatch, tmp_path):
 
 # ---------- /checknow lines ----------
 
-def test_reseller_note_and_checknow_line():
-    from bot.commands import format_product_line
+def test_reseller_note_and_checknow_block():
+    from bot.commands import format_product_block
     from utils.config import Product
 
-    r = walmart.parse_item(item(marketplace=True, sellerInfo="Flipper LLC", salePrice=237.98), {"url": URL})
-    assert r["note"] == "only resellers"
-    p = Product(id="wm", name="30th Celebration Elite Trainer Box", retailer="walmart", url=URL)
-    assert format_product_line(p, r) == (
-        "🏪 **Walmart** · ❌ out of stock (only resellers: $237.98): 30th Celebration Elite Trainer Box")
+    p = Product(id="wm", name="30th Celebration ETB", retailer="walmart", url=URL)
+    resold = walmart.parse_item(item(marketplace=True, sellerInfo="Flipper LLC", salePrice=237.98), {"url": URL})
+    assert resold["note"] == "only resellers"
+    walmart_has_it = walmart.parse_item(item(), {"url": URL})
+    gone = walmart.parse_item(item(stock="Not available", availableOnline=False), {"url": URL})
 
-    r = walmart.parse_item(item(), {"url": URL})
-    assert format_product_line(p, r) == "🏪 **Walmart** · ✅ in stock at $49.97: 30th Celebration Elite Trainer Box"
+    block = format_product_block("Walmart", [(p, walmart_has_it, None), (p, resold, None),
+                                             (p, gone, None), (p, None, CheckFailed("HTTP 401"))])
+    assert block.split("\n") == [
+        "🏪 **Walmart**: 1 in stock, 1 resellers only",
+        f"✅ [30th Celebration ETB](<{URL}>) · $49.97",
+        f"🟡 [30th Celebration ETB](<{URL}>) · only resellers $237.98",
+        f"❌ [30th Celebration ETB](<{URL}>)",
+        "⚠️ 30th Celebration ETB: `HTTP 401`",
+    ]
 
-    r = walmart.parse_item(item(salePrice=89.99), {"url": URL, "max_price": 59.99})
-    assert r["note"] == "over max $59.99"
+    over = walmart.parse_item(item(salePrice=89.99), {"url": URL, "max_price": 59.99})
+    assert over["note"] == "over max $59.99"

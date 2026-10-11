@@ -100,6 +100,17 @@ def test_checknow_links_in_stock_items_first():
     ])
     assert block.split("\n") == [
         "🔎 **Card Shop**: 1 in stock, 1 sold out",
-        "✅ [151 Booster Bundle](<https://shop/products/bb>) ($26.94)",
-        "❌ 151 ETB ($49.99)",
+        "✅ [151 Booster Bundle](<https://shop/products/bb>) · $26.94",
+        "❌ [151 ETB](<https://shop/products/etb>) · $49.99",
     ]
+    only = format_search_block("Card Shop", [
+        {"name": "151 ETB", "url": "https://shop/products/etb", "in_stock": False, "price": 49.99},
+    ], only_in_stock=True)
+    assert only == "🔎 **Card Shop**: 0 in stock, 1 sold out"
+
+
+def test_checknow_filter_words():
+    from bot.commands import matches_filter
+    assert matches_filter("Pokémon TCG: 30th Celebration: Elite Trainer Box", "30th celebration")
+    assert matches_filter("Anything", None)
+    assert not matches_filter("Pokemon: Celebrations Elite Trainer Box", "30th")
