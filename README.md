@@ -253,6 +253,8 @@ To watch one specific page instead of a search, add it under `products:` with `r
 3. Upload `walmart_public_key.pem` to your Walmart.io application. Walmart gives you a **Consumer ID**.
 4. Set `WALMART_CONSUMER_ID` and `WALMART_PRIVATE_KEY_PATH` in `.env`, add a product with `retailer: "walmart"`, and run `/checknow`.
 
+Find products with `/walmartfind` in Discord and add them with just `name`, `retailer: "walmart"` and `item_id`. All Walmart products are checked in one batched call (up to 20 ids), so a long list stays well under Walmart's 5,000 calls/day.
+
 By default an item only counts as in stock when **Walmart itself** sells it, so reseller listings don't trigger alerts. Set `max_price` to ignore marked-up prices, or `allow_marketplace: true` to include third-party sellers.
 
 ### Environment variables (`.env`)
@@ -277,7 +279,8 @@ By default an item only counts as in stock when **Walmart itself** sells it, so 
 | Command | What it does |
 |---|---|
 | `/status` | What's being watched, when each store was last checked, and any failing stores |
-| `/checknow` | Checks every store right now and lists results, with in-stock items as clickable links. Doesn't send alerts. |
+| `/checknow` | Checks every store right now and lists results as clickable links. Options: `store` (e.g. Walmart), `filter` (e.g. `30th celebration`), `only_in_stock`. Doesn't send alerts. |
+| `/walmartfind` | Searches Walmart and shows each result's seller (🏪 Walmart or 🔁 reseller), price and `item_id` to paste into config.yaml |
 | `/testalert` | Posts a sample alert to check the channel and permissions |
 
 ---

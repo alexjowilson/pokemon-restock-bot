@@ -91,8 +91,13 @@ def load_settings(config_path: Path = DEFAULT_CONFIG_PATH) -> Settings:
         if pid in seen_ids:
             raise RuntimeError(f"Duplicate product id in config: {pid}")
         seen_ids.add(pid)
-        products.append(Product(id=pid, name=p.pop("name"), retailer=p.pop("retailer"),
-                                url=p.pop("url"), extra=p))
+        retailer = p.pop("retailer")
+        url = p.pop("url", None)
+        if not url and retailer == "walmart" and p.get("item_id"):
+            url = f"https://www.walmart.com/ip/{int(p['item_id'])}"
+        if not url:
+            raise RuntimeError(f"Product {pid} needs a `url`")
+        products.append(Product(id=pid, name=p.pop("name"), retailer=retailer, url=url, extra=p))
 
     searches = []
     for raw_search in raw.get("searches", []) or []:

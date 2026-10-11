@@ -174,3 +174,128 @@ def test_reseller_note_and_checknow_block():
 
     over = walmart.parse_item(item(salePrice=89.99), {"url": URL, "max_price": 59.99})
     assert over["note"] == "over max $59.99"
+
+
+# ---------- batching ----------
+
+def _fake_api(monkeypatch, items_by_id, calls, fail=None):
+    monkeypatch.setattr(walmart, "_credentials", lambda: ("c", "1", None))
+    monkeypatch.setattr(walmart, "auth_headers", lambda *a, **k: {})
+    monkeypatch.setattr(walmart, "BATCH_WINDOW_SECONDS", 0)
+
+    async def fake_get_json(url, params=None, headers=None):
+        calls.append((url, params))
+        if fail:
+            raise fail
+        ids = params["ids"].split(",")
+        return {"items": [items_by_id[i] for i in ids if i in items_by_id]}
+
+    monkeypatch.setattr(walmart.http, "get_json", fake_get_json)
+
+
+def test_concurrent_checks_share_one_call(monkeypatch):
+    calls = []
+    _fake_api(monkeypatch, {"1": item(itemId=1), "2": item(itemId=2, stock="Not available")}, calls)
+
+    async def run():
+        return await asyncio.gather(walmart.check_product({"item_id": 1}),
+                                    walmart.check_product({"item_id": 2}))
+
+    a, b = asyncio.run(run())
+    assert a["in_stock"] is True and b["in_stock"] is False
+    assert len(calls) == 1 and sorted(calls[0][1]["ids"].split(",")) == ["1", "2"]
+
+
+def test_more_than_20_ids_split_into_chunks(monkeypatch):
+    calls = []
+    _fake_api(monkeypatch, {str(i): item(itemId=i) for i in range(1, 26)}, calls)
+
+    async def run():
+        return await asyncio.gather(*(walmart.check_product({"item_id": i}) for i in range(1, 26)))
+
+    assert all(r["in_stock"] for r in asyncio.run(run()))
+    assert [len(c[1]["ids"].split(",")) for c in calls] == [20, 5]
+
+
+def test_batch_failure_reaches_every_check(monkeypatch):
+    _fake_api(monkeypatch, {}, [], fail=CheckFailed("HTTP 401"))
+
+    async def run():
+        return await asyncio.gather(walmart.check_product({"item_id": 1}),
+                                    walmart.check_product({"item_id": 2}), return_exceptions=True)
+
+    assert all(isinstance(r, CheckFailed) for r in asyncio.run(run()))
+
+
+def test_missing_item_in_batch(monkeypatch):
+    _fake_api(monkeypatch, {"1": item(itemId=1)}, [])
+
+    async def run():
+        return await asyncio.gather(walmart.check_product({"item_id": 1}),
+                                    walmart.check_product({"item_id": 999}), return_exceptions=True)
+
+    ok, missing = asyncio.run(run())
+    assert ok["in_stock"] is True
+    assert isinstance(missing, CheckFailed) and "999" in str(missing)
+
+
+# ---------- search / find ----------
+
+def test_search_items_and_find_output(monkeypatch):
+    monkeypatch.setattr(walmart, "_credentials", lambda: ("c", "1", None))
+    monkeypatch.setattr(walmart, "auth_headers", lambda *a, **k: {})
+    seen = {}
+
+    async def fake_get_json(url, params=None, headers=None):
+        seen.update(url=url, params=params)
+        return {"items": [
+            item(itemId=111, name="Pokemon TCG Chaos Rising Booster Bundle", salePrice=26.94),
+            item(itemId=222, name="Collectible Chaos Rising Booster Bundle", marketplace=True,
+                 sellerInfo="Flipper LLC", salePrice=79.99),
+        ]}
+
+    monkeypatch.setattr(walmart.http, "get_json", fake_get_json)
+    results = asyncio.run(walmart.search_items("chaos rising booster bundle"))
+    assert seen["url"] == walmart.SEARCH_URL and seen["params"]["query"] == "chaos rising booster bundle"
+    assert [(r["item_id"], r["first_party"], r["available"]) for r in results] == [
+        ("111", True, True), ("222", False, True)]
+
+    from bot.commands import format_walmart_find
+    lines = format_walmart_find("chaos rising", results).split("\n")
+    assert "🏪 Walmart" in lines[1] and "`item_id: 111`" in lines[1] and "$26.94" in lines[1]
+    assert "🔁 Flipper LLC" in lines[2] and "`item_id: 222`" in lines[2]
+
+
+def test_config_accepts_item_id_without_url(tmp_path, monkeypatch):
+    from utils.config import load_settings
+    monkeypatch.setenv("DISCORD_TOKEN", "t")
+    monkeypatch.setenv("APP_ID", "1")
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("discord:\n  alert_channel_id: 5\nproducts:\n"
+                   "  - id: wm_cr\n    name: Chaos Rising Booster Bundle\n"
+                   "    retailer: walmart\n    item_id: 17344505131\n")
+    p = load_settings(cfg).products[0]
+    assert p.url == "https://www.walmart.com/ip/17344505131"
+    assert walmart.item_id_from(p.as_dict()) == "17344505131"
+
+
+def test_store_filter_helpers():
+    from bot.commands import store_matches
+    assert store_matches("Walmart", "walmart") and store_matches("Zulu's Games", "zulu")
+    assert store_matches("Walmart", None) and not store_matches("Walmart", "zulu")
+
+
+def test_commands_register():
+    """The slash commands (with autocomplete and options) build without errors."""
+    import discord
+    from discord import app_commands
+    from types import SimpleNamespace
+    from bot.commands import register_commands
+
+    client = discord.Client(intents=discord.Intents.none())
+    tree = app_commands.CommandTree(client)
+    register_commands(SimpleNamespace(tree=tree, settings=SimpleNamespace(products=[], searches=[])))
+    names = {c.name for c in tree.get_commands()}
+    assert {"checknow", "walmartfind", "status", "testalert"} <= names
+    checknow = tree.get_command("checknow")
+    assert [p.name for p in checknow.parameters] == ["store", "filter", "only_in_stock"]

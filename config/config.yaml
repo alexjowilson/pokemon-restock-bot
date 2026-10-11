@@ -82,8 +82,14 @@ products:
 
   # Walmart (needs WALMART_CONSUMER_ID + WALMART_PRIVATE_KEY_PATH in .env).
   # Only counts as in stock when Walmart itself sells it, unless allow_marketplace: true.
-  # Each Walmart product uses ~1,440 API calls/day at a 60s interval; the daily limit is 5,000,
-  # so keep this list to 3 items or fewer. Optional: max_price: 59.99 to ignore marked-up prices.
+  # All Walmart products are checked together in ONE API call (up to 20 per call), so 20 items
+  # cost the same ~1,440 calls/day as one (limit: 5,000/day).
+  # Find item ids in Discord with /walmartfind; then url can be left out:
+  #   - id: "wm_chaos_rising_bb"
+  #     name: "Chaos Rising Booster Bundle"
+  #     retailer: "walmart"
+  #     item_id: 1234567890
+  # Optional: max_price: 59.99 to ignore marked-up prices.
   - id: "wm_30th_etb"
     name: "30th Celebration Elite Trainer Box"
     retailer: "walmart"

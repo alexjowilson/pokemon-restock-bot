@@ -23,6 +23,7 @@ marketplace is full of resellers at 2-3x MSRP.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import os
 import re
@@ -35,7 +36,11 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from monitors.errors import CheckFailed
 from monitors.http import http
 
-LOOKUP_URL = "https://developer.api.walmart.com/api-proxy/service/affil/product/v2/items"
+API_BASE = "https://developer.api.walmart.com/api-proxy/service/affil/product/v2"
+LOOKUP_URL = f"{API_BASE}/items"
+SEARCH_URL = f"{API_BASE}/search"
+MAX_IDS_PER_CALL = 20       # Walmart's limit for one lookup request
+BATCH_WINDOW_SECONDS = 0.1  # checks started together share one request
 IN_STOCK_VALUES = {"available", "limited supply", "last few items"}
 _ITEM_ID_RE = re.compile(r"/ip/(?:[^/]+/)?(\d+)")
 
@@ -44,7 +49,7 @@ def item_id_from(product: dict) -> str:
     item_id = product.get("item_id")
     if item_id:
         return str(int(item_id))
-    match = _ITEM_ID_RE.search(product.get("url", ""))
+    match = _ITEM_ID_RE.search(product.get("url") or "")
     if not match:
         raise CheckFailed("Walmart products need an `item_id`, or a URL like walmart.com/ip/<name>/<id>")
     return match.group(1)
@@ -116,12 +121,89 @@ def parse_item(item: dict, product: dict) -> dict:
     }
 
 
+def item_url(item_id) -> str:
+    return f"https://www.walmart.com/ip/{item_id}"
+
+
+async def _signed_get(url: str, params: dict):
+    consumer_id, key_version, private_key = _credentials()
+    return await http.get_json(url, params=params,
+                               headers=auth_headers(consumer_id, key_version, private_key))
+
+
+class _LookupBatcher:
+    """Coalesces lookups that start at the same moment into one API call (up to 20 ids).
+
+    The scheduler checks every product at once, so 20 Walmart products cost one call
+    per pass instead of 20. That's what keeps a long watch list under 5,000 calls/day.
+    """
+
+    def __init__(self):
+        self._pending: dict = {}
+        self._task = None
+
+    async def get(self, item_id: str):
+        loop = asyncio.get_running_loop()
+        if self._task is not None and self._task.get_loop() is not loop:
+            self._pending, self._task = {}, None  # a new event loop (tests, restarts)
+        future = loop.create_future()
+        self._pending.setdefault(item_id, []).append(future)
+        if self._task is None or self._task.done():
+            self._task = loop.create_task(self._flush())
+        return await future
+
+    async def _flush(self):
+        await asyncio.sleep(BATCH_WINDOW_SECONDS)
+        pending, self._pending = self._pending, {}
+        ids = list(pending)
+        for start in range(0, len(ids), MAX_IDS_PER_CALL):
+            chunk = ids[start:start + MAX_IDS_PER_CALL]
+            try:
+                data = await _signed_get(LOOKUP_URL, {"ids": ",".join(chunk)})
+                items = data.get("items") if isinstance(data, dict) else None
+                by_id = {str(i.get("itemId")): i for i in items or []}
+                outcome = [(by_id.get(i), None) for i in chunk]
+            except Exception as e:  # every waiter gets the same failure
+                outcome = [(None, e) for _ in chunk]
+            for item_id, (item, error) in zip(chunk, outcome):
+                for future in pending[item_id]:
+                    if future.done():  # the check already timed out
+                        continue
+                    if error is not None:
+                        future.set_exception(error)
+                    else:
+                        future.set_result(item)
+
+
+_batcher = _LookupBatcher()
+
+
 async def check_product(product: dict) -> dict:
     item_id = item_id_from(product)
-    consumer_id, key_version, private_key = _credentials()
-    data = await http.get_json(LOOKUP_URL, params={"ids": item_id},
-                               headers=auth_headers(consumer_id, key_version, private_key))
-    items = data.get("items") if isinstance(data, dict) else None
-    if not items:
+    item = await _batcher.get(item_id)
+    if not item:
         raise CheckFailed(f"Walmart returned no item for id {item_id}; check the URL/item_id")
-    return parse_item(items[0], product)
+    return parse_item(item, product)
+
+
+async def search_items(query: str, limit: int = 10) -> list:
+    """Walmart search, for finding item ids to watch. One API call."""
+    data = await _signed_get(SEARCH_URL, {"query": query, "numItems": str(min(max(limit, 1), 25))})
+    items = data.get("items") if isinstance(data, dict) else None
+    if items is None:
+        raise CheckFailed("unexpected response from Walmart search")
+    results = []
+    for item in items:
+        if not item.get("itemId"):
+            continue
+        parsed = parse_item(item, {"allow_marketplace": True})
+        results.append({
+            "item_id": str(item["itemId"]),
+            "name": item.get("name", "Untitled"),
+            "url": item_url(item["itemId"]),
+            "price": parsed["price"],
+            "available": parsed["in_stock"],
+            "first_party": is_first_party(item),
+            "seller": item.get("sellerInfo") or "Walmart",
+        })
+    return results

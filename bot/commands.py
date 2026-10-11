@@ -8,6 +8,7 @@ import discord
 
 from bot.notifier import RETAILER_NAMES
 from bot.scheduler import check_once, search_once
+from monitors import walmart
 from monitors.errors import CheckFailed
 from utils.text import has_word
 
@@ -84,6 +85,29 @@ def format_search_block(store_name: str, listings: list, limit: int = 25,
     return "\n".join([header] + rows + more)
 
 
+def store_names(settings) -> list:
+    names = [store_label(p) for p in settings.products] + [s.store_name for s in settings.searches]
+    return list(dict.fromkeys(names))  # unique, config order
+
+
+def store_matches(name: str, wanted: str | None) -> bool:
+    return not wanted or wanted.strip().lower() in name.lower()
+
+
+def format_walmart_find(query: str, results: list) -> str:
+    """/walmartfind output: who sells it right now, price, item id to paste into config."""
+    if not results:
+        return f"🔎 **Walmart** search `{query}`: nothing found"
+    lines = [f"🔎 **Walmart** search `{query}`: {len(results)} result(s). "
+             f"Copy an `item_id` into config.yaml to watch it."]
+    for r in results:
+        seller = "🏪 Walmart" if r["first_party"] else f"🔁 {r['seller']}"
+        stock = "✅" if r["available"] else "❌"
+        price = f" · {_price(r['price'])}" if r.get("price") is not None else ""
+        lines.append(f"{stock} [{r['name']}](<{r['url']}>){price} · {seller} · `item_id: {r['item_id']}`")
+    return "\n".join(lines)
+
+
 def matches_filter(title: str, text: str | None) -> bool:
     """/checknow filter: every word must appear in the title ("30th etb")."""
     if not text:
@@ -142,16 +166,19 @@ def register_commands(bot: RestockBot) -> None:
 
     @tree.command(name="checknow", description="Check everything right now and show what the bot sees")
     @discord.app_commands.describe(
+        store="Only check this store, e.g. Walmart",
         filter="Only show titles containing these words, e.g. 30th celebration",
         only_in_stock="Hide sold-out listings",
     )
     @discord.app_commands.default_permissions(manage_guild=True)
-    async def checknow(interaction: discord.Interaction, filter: str | None = None,
-                       only_in_stock: bool = False):
+    async def checknow(interaction: discord.Interaction, store: str | None = None,
+                       filter: str | None = None, only_in_stock: bool = False):
         # Read-only: doesn't change saved state or send alerts. Use it to verify new URLs.
         await interaction.response.defer(ephemeral=True, thinking=True)
 
-        products = [p for p in bot.settings.products if matches_filter(p.name, filter)]
+        products = [p for p in bot.settings.products
+                    if store_matches(store_label(p), store) and matches_filter(p.name, filter)]
+        searches = [srch for srch in bot.settings.searches if store_matches(srch.store_name, store)]
 
         async def one(p):
             try:
@@ -179,8 +206,26 @@ def register_commands(bot: RestockBot) -> None:
                 continue
             by_store.setdefault(store_label(row[0]), []).append(row)
         blocks = [format_product_block(store, rows) for store, rows in by_store.items()]
-        blocks += [b for b in await asyncio.gather(*(one_search(s) for s in bot.settings.searches)) if b]
+        blocks += [b for b in await asyncio.gather(*(one_search(s) for s in searches)) if b]
 
-        empty = "Nothing matched." if (filter or only_in_stock) else "Nothing configured."
+        empty = "Nothing matched." if (store or filter or only_in_stock) else "Nothing configured."
         for chunk in chunk_messages(["\n\n".join(blocks)] if blocks else [empty]):
+            await interaction.followup.send(chunk, ephemeral=True)
+
+    @checknow.autocomplete("store")
+    async def store_autocomplete(interaction: discord.Interaction, current: str):
+        return [discord.app_commands.Choice(name=n, value=n)
+                for n in store_names(bot.settings) if store_matches(n, current)][:25]
+
+    @tree.command(name="walmartfind", description="Search Walmart to find item ids worth watching")
+    @discord.app_commands.describe(query="e.g. chaos rising booster bundle")
+    @discord.app_commands.default_permissions(manage_guild=True)
+    async def walmartfind(interaction: discord.Interaction, query: str):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        try:
+            results = await walmart.search_items(query, limit=10)
+        except CheckFailed as e:
+            await interaction.followup.send(f"⚠️ Walmart search failed: `{e}`", ephemeral=True)
+            return
+        for chunk in chunk_messages([format_walmart_find(query, results)]):
             await interaction.followup.send(chunk, ephemeral=True)
