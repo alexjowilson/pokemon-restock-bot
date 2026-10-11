@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from utils.pricing import verdict
+from monitors.market import market_prices
+from utils.pricing import market_verdict, verdict
 
 from bot.notifier import RETAILER_NAMES
 from bot.scheduler import check_once, search_once
@@ -52,7 +53,9 @@ def format_product_row(product, result: dict) -> str:
     link = f"[{product.name}](<{product.url}>)"  # <...> stops Discord adding a big link preview
     price = _price(result.get("price"))
     extra = getattr(product, "extra", {}) or {}
-    compare = verdict(result.get("price"), extra.get("msrp"))
+    calls = [verdict(result.get("price"), extra.get("msrp")),
+             market_verdict(result.get("price"), market_prices.get(getattr(product, "id", "")))]
+    compare = " · ".join(c for c in calls if c)
     compare = f" ({compare})" if compare else ""
     if result["in_stock"]:
         return f"✅ {link}" + (f" · {price}{compare}" if price else "")
@@ -170,6 +173,12 @@ def register_commands(bot: RestockBot) -> None:
             when = f", checked {_ago(max(checked))}" if checked else ", not checked yet"
             lines.append(f"{icon} **{name}** (Walmart): {len(pages)} page(s), "
                          f"{selling} sold by Walmart now{extra}{when}")
+        if market_prices.fetched_at:
+            priced = sum(1 for v in market_prices.by_product.values() if v.get("price"))
+            lines.append(f"📈 TCGplayer market prices: {priced} product page(s) priced, "
+                         f"updated {_ago(market_prices.fetched_at)}")
+        elif market_prices.last_error:
+            lines.append(f"⚠️ 📈 Market prices unavailable: `{market_prices.last_error}`")
         for p in bot.settings.products:
             if p.id.startswith("wmw_"):
                 continue

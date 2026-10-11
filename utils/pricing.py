@@ -39,3 +39,26 @@ def verdict(price, msrp) -> str:
 def is_deal(price, msrp, max_pct) -> bool:
     pct = pct_over(price, msrp)
     return pct is not None and max_pct is not None and pct <= float(max_pct)
+
+
+BELOW_MARKET_PCT = 10   # 10%+ under market: 🟢 good price; within ±10%: ⚪ about market
+
+
+def market_verdict(price, market) -> str:
+    """'📈 market $45.12: 🟢 12% below', or '' when there's no market price."""
+    pct = pct_over(price, market)
+    if pct is None:
+        return ""
+    if pct <= -BELOW_MARKET_PCT:
+        call = f"🟢 {abs(pct):.0f}% below"
+    elif pct < BELOW_MARKET_PCT:
+        call = "⚪ about market"
+    else:
+        call = f"🔴 {pct:.0f}% above"
+    return f"📈 market ${float(market):.2f}: {call}"
+
+
+def is_market_deal(price, market, below_pct) -> bool:
+    """Price at least `below_pct`% under the market price."""
+    pct = pct_over(price, market)
+    return pct is not None and below_pct is not None and pct <= -float(below_pct)

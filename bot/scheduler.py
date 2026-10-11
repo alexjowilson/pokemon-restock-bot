@@ -18,7 +18,8 @@ from bot import autowatch
 from monitors import MONITORS, SEARCHERS
 from monitors.errors import Blocked, CheckFailed
 from monitors.shopify import listing_age_hours
-from utils.pricing import is_deal
+from monitors.market import market_prices
+from utils.pricing import is_deal, is_market_deal
 from utils.text import title_matches
 from utils.config import Product
 from utils.state import load_state, save_state
@@ -99,15 +100,17 @@ async def run_checks(
 
         # A reseller asking close to MSRP (opt-in: reseller_deals in config.yaml). Alerts
         # once when the price drops into range, again only after it leaves and returns.
+        market = market_prices.get(product.id)
+        price = result.get("price")
         deal = (not in_stock and result.get("note") == "only resellers"
-                and is_deal(result.get("price"), product.extra.get("msrp"),
-                            product.extra.get("deal_pct")))
+                and (is_deal(price, product.extra.get("msrp"), product.extra.get("deal_pct"))
+                     or is_market_deal(price, market, product.extra.get("below_market_pct"))))
 
         alert = None
         if in_stock and not was_in_stock and not first_look:
-            alert = {**product.as_dict(), **result}
+            alert = {**product.as_dict(), **result, "market": market}
         elif deal and not prev.get("deal") and not first_look:
-            alert = {**product.as_dict(), **result, "kind": "deal"}
+            alert = {**product.as_dict(), **result, "market": market, "kind": "deal"}
         if alert:
             try:
                 await send_alert(alert)
@@ -310,6 +313,7 @@ class Scheduler:
             try:
                 products = self.products + autowatch.auto_products(self.state, self.products,
                                                                     self.searches)
+                market_prices.refresh_in_background(self.products)  # at most daily
                 await asyncio.gather(
                     run_checks(products, self.state, self.send_alert, self.health, self.send_health),
                     run_search_checks(self.searches, self.state, self.send_alert, self.health,

@@ -88,6 +88,6 @@ def test_deal_alert_layout():
     content, embed = build_alert({"name": "Chaos Rising Booster Bundle", "url": "https://w/2",
                                   "retailer": "walmart", "in_stock": False, "kind": "deal",
                                   "price": 29.99, "msrp": 26.94}, now=0)
-    assert content.startswith("💸 Reseller near MSRP: Chaos Rising Booster Bundle [Buy Now]")
+    assert content.startswith("💸 Reseller deal: Chaos Rising Booster Bundle [Buy Now]")
     assert "🔁 Sold by a reseller" in embed.description
     assert "💲 Price: $29.99 (🟢 +11% vs $26.94 MSRP)" in embed.description

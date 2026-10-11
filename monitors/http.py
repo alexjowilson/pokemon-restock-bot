@@ -11,7 +11,7 @@ import aiohttp
 from monitors.errors import Blocked, CheckFailed
 
 # Identify the bot honestly; don't pretend to be a browser.
-USER_AGENT = "pokemon-restock-bot/1.0 (+https://github.com/alexjowilson/pokemon-restock-bot)"
+USER_AGENT = "pokemon-restock-bot/1.1.0 (+https://github.com/alexjowilson/pokemon-restock-bot)"
 
 # Official, quota-based APIs can be called faster than scraped store sites. Walmart's
 # limit is per day, so 2 req/s keeps an hourly 28-query pass from blocking the

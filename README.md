@@ -12,7 +12,7 @@ Every alert includes the price, a product image, a buy link (straight to the car
 - 🔁 **Restock alerts:** fires when a known listing goes from sold out to available
 - 🏬 **Walmart watch list:** every set's ETB and Booster Bundle pages (Walmart's own and resellers') are checked every minute in batched lookups, and you hear about it the moment Walmart itself sells one
 - 🚫 **Scalper filter:** a Walmart item only counts as in stock when Walmart itself sells it, with an optional `max_price`
-- 📊 **MSRP check:** every price is compared to MSRP (🟢 / 🟡 / 🔴), with optional alerts when a reseller drops near MSRP
+- 📊 **Price check:** every price is compared to MSRP and to the TCGplayer market price, with optional alerts when a reseller becomes a good deal
 - 🎯 **Precise filtering:** only Pokémon ETBs and Booster Bundles; single cards, other games and accessories are ignored
 - 📺 **Channel per retailer:** for example, every Walmart alert goes to `#walmart`, with optional role pings per retailer or store
 - 🛒 **Quick buy links:** links go straight to the cart when the store allows it
@@ -80,7 +80,12 @@ That's about **3,170 calls a day**, which leaves headroom for `/walmartfind`. Th
 
 **Resellers:** a page sold only by a third party counts as **not in stock**, so it never alerts. If Walmart itself starts selling that page, the next minute's check sees "sold out → in stock" and alerts. `max_price` adds a second guard: a listing above it doesn't count either.
 
-**Price check vs MSRP:** every product has an MSRP. It defaults by type (ETB $49.99, Booster Bundle $26.94), and `msrp:` overrides it per product. `/checknow` and alerts compare each price to it: 🟢 within 15% of MSRP, 🟡 within 50%, 🔴 beyond. Set `reseller_deals: {max_over_msrp_pct: 15}` to also get a 💸 alert when a reseller on a watched page drops close to MSRP. It fires once when the price comes into range, and again only if it leaves and returns.
+**Price checks:** every price is compared two ways:
+
+- **vs MSRP** (ETB $49.99, Booster Bundle $26.94 by default; `msrp:` overrides it per product): 🟢 within 15%, 🟡 within 50%, 🔴 beyond.
+- **vs TCGplayer market price** (`monitors/market.py`): once a day the bot downloads TCGplayer's market prices from [TCGCSV](https://tcgcsv.com)'s free daily dump. That's about 2 requests per set, cached in `data/market.json`. It matches each product by name ("Destined Rivals Elite Trainer Box" → set "SV10: Destined Rivals" → that set's plain ETB, skipping Pokémon Center exclusives and cases) and shows 🟢 10%+ below market, ⚪ about market, or 🔴 above. If a product can't be matched, add `tcgplayer_id:` to it.
+
+`/checknow` rows and alerts show both, e.g. `only resellers $112.98 (🔴 +126% vs $49.99 MSRP · 📈 market $72.00: 🔴 57% above)`. Set `reseller_deals` (`max_over_msrp_pct` and/or `below_market_pct`) to get a 💸 alert when a reseller on a watched page becomes a good price. It fires once when the price comes into range, and again only if it leaves and returns.
 
 **Quiet start:** the first check of a newly added page only records its state, so adding 40 pages never floods the channel. A page Walmart removes reads as unavailable instead of an error.
 
@@ -104,7 +109,7 @@ That's about **3,170 calls a day**, which leaves headroom for `/walmartfind`. Th
 | Concurrency | **asyncio**: every store is checked in parallel on one thread |
 | Auth | **cryptography**: RSA SHA-256 request signing for Walmart.io |
 | Config | **PyYAML** (`config/config.yaml`) + **python-dotenv** (`.env` for secrets) |
-| Store data | **Walmart.io Affiliate API**; **Shopify Ajax API** (predictive search + product JSON); Best Buy Products API (optional) |
+| Store data | **Walmart.io Affiliate API**; **TCGCSV** (daily TCGplayer market prices); **Shopify Ajax API** (predictive search + product JSON); Best Buy Products API (optional) |
 | Persistence | JSON file (`data/state.json`) with atomic writes |
 | Tests | **pytest**: unit tests plus a real local aiohttp server for HTTP behavior |
 | Process manager | **systemd** on Raspberry Pi OS |
@@ -142,6 +147,7 @@ pokemon-restock-bot/
 │  ├─ http.py            # Shared aiohttp client (rate limiting, error handling)
 │  ├─ errors.py          # CheckFailed / Blocked exceptions
 │  ├─ walmart.py         # Walmart.io: signed requests, batched lookups, search, seller filter
+│  ├─ market.py          # Daily TCGplayer market prices (via TCGCSV), matched by name
 │  ├─ shopify.py         # Shopify search + product monitors
 │  ├─ bestbuy.py         # Best Buy Products API monitor (needs API key)
 │  └─ demo.py            # Fake monitor for testing the pipeline
@@ -387,7 +393,7 @@ pip install pytest
 pytest
 ```
 
-There are 104 tests. They cover alert de-duplication, new-listing and restock detection, the quiet first pass, backoff and health alerts, and title filtering. They also cover Shopify, Best Buy and Walmart response parsing, Walmart request signing and batching, the reseller and `max_price` rules, MSRP comparison and reseller-deal alerts, the Walmart watch list, the API call budget, per-retailer channel routing, the alert layout, and HTTP status handling against a real local server.
+There are 115 tests. They cover alert de-duplication, new-listing and restock detection, the quiet first pass, backoff and health alerts, and title filtering. They also cover Shopify, Best Buy and Walmart response parsing, Walmart request signing and batching, the reseller and `max_price` rules, MSRP and market-price comparison (set and product matching against real TCGplayer names), reseller-deal alerts, the Walmart watch list, the API call budget, per-retailer channel routing, the alert layout, and HTTP status handling against a real local server.
 
 ---
 

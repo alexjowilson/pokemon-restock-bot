@@ -130,11 +130,15 @@ def _with_msrp(products, table, deals: dict) -> list:
     reseller-deal threshold, so checks and alerts can compare prices."""
     from utils.pricing import DEFAULT_MSRP, msrp_for
     table = {str(k).lower(): float(v) for k, v in (table or DEFAULT_MSRP).items()}
-    deal_pct = deals.get("max_over_msrp_pct") if deals.get("enabled", True) else None
+    enabled = deals.get("enabled", True)
+    deal_pct = deals.get("max_over_msrp_pct") if enabled else None
+    below_market = deals.get("below_market_pct") if enabled else None
     out = []
     for p in products:
         msrp = msrp_for(p.name, p.extra.get("msrp"), table)
         extra = dict(p.extra)
+        if below_market is not None and p.retailer == "walmart":
+            extra["below_market_pct"] = float(below_market)
         if msrp is not None:
             extra["msrp"] = msrp
             if deal_pct is not None and p.retailer == "walmart":
@@ -160,7 +164,8 @@ def _walmart_watch(entries, configured) -> list:
         ids = entry.get("item_ids") or []
         if not name or not ids:
             raise RuntimeError("Each walmart_watch entry needs a `name` and `item_ids`")
-        options = {k: v for k, v in entry.items() if k in ("max_price", "allow_marketplace", "msrp")}
+        options = {k: v for k, v in entry.items()
+                   if k in ("max_price", "allow_marketplace", "msrp", "set", "tcgplayer_id")}
         for raw_id in ids:
             item_id = str(int(raw_id))
             if item_id in taken:

@@ -6,7 +6,7 @@ from typing import Optional
 
 import discord
 
-from utils.pricing import verdict
+from utils.pricing import market_verdict, verdict
 
 log = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ def build_alert(product: dict, role_id: Optional[int] = None, now: Optional[floa
     store = product.get("store_name") or RETAILER_NAMES.get(product.get("retailer"), product.get("retailer"))
 
     ping = f"<@&{role_id}> " if role_id else ""
-    label = "🆕 New listing: " if is_new else ("💸 Reseller near MSRP: " if is_deal else "")
+    label = "🆕 New listing: " if is_new else ("💸 Reseller deal: " if is_deal else "")
     link = "Buy Now" if in_stock or is_deal else "View"
     content = f"{ping}{label}{product['name']} [{link}](<{buy_url}>)"  # <...> stops Discord adding a link preview
 
@@ -39,6 +39,9 @@ def build_alert(product: dict, role_id: Optional[int] = None, now: Optional[floa
     if product.get("price") is not None:
         compare = verdict(product["price"], product.get("msrp"))
         lines.append(f"💲 Price: ${product['price']:.2f}" + (f" ({compare})" if compare else ""))
+        vs_market = market_verdict(product["price"], product.get("market"))
+        if vs_market:
+            lines.append(vs_market)
     if str(product.get("stock_level") or "").lower() in ("limited supply", "last few items"):
         lines.append(f"🔥 {product['stock_level']}: move fast")
     lines.append(f"🏪 {store or 'unknown'}")
