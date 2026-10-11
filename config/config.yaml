@@ -144,15 +144,15 @@ walmart_watch:
   - name: "Pitch Black Booster Bundle"
     item_ids: [20724415375]
   - name: "Phantasmal Flames Elite Trainer Box"
-    item_ids: [17780209250, 18672005065, 19897067412]
+    item_ids: [17780209250, 18672005065]
   - name: "Phantasmal Flames Booster Bundle"
-    item_ids: [18384763311, 18638705180]
+    item_ids: [18384763311]
   - name: "Mega Evolution Elite Trainer Box (Lucario)"
     item_ids: [17961008385, 17962664093]
   - name: "Mega Evolution Elite Trainer Box (Gardevoir)"
     item_ids: [17867005579]
   - name: "Mega Evolution Booster Bundle"
-    item_ids: [17344505131, 6008685750]
+    item_ids: [17344505131]
   - name: "Prismatic Evolutions Elite Trainer Box"
     item_ids: [13816151308, 15160152062]
   - name: "Prismatic Evolutions Booster Bundle"
@@ -167,8 +167,6 @@ walmart_watch:
     item_ids: [15780068131]
   - name: "Black Bolt Elite Trainer Box"
     item_ids: [16498668973, 17317016821]
-  - name: "White Flare Elite Trainer Box"
-    item_ids: [17373951770]
   - name: "Black Bolt & White Flare Elite Trainer Box"
     item_ids: [17337259478]
   # Delta Reign (Nov 6) and Pitch Black / Chaos Rising ETBs: no regular Walmart page
