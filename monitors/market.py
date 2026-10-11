@@ -33,6 +33,7 @@ BASE = "https://tcgcsv.com/tcgplayer/3"
 CACHE_PATH = PROJECT_ROOT / "data" / "market.json"
 REFRESH_SECONDS = 24 * 3600
 RETRY_SECONDS = 3600            # after a failed refresh
+CACHE_VERSION = 2               # bump when matching changes, to re-match on the next start
 TYPES = ("elite trainer box", "booster bundle")
 SKIP_WORDS = ("pokemon center", "case", "display", "bundle of", "set of")
 
@@ -73,16 +74,29 @@ def pick_group(groups: list, set_name: str) -> dict | None:
     return matches[0] if matches else None
 
 
-def pick_product(products: list, kind: str, variants: list) -> dict | None:
+def is_card(product: dict) -> bool:
+    """TCGCSV marks single cards with a Number or Rarity; sealed products have neither.
+
+    Promo cards are often named after the box they come in ("... (Elite Trainer Box
+    Exclusive)"), so without this a set's ETB never matches uniquely."""
+    return any(d.get("name") in ("Number", "Rarity") for d in product.get("extendedData") or [])
+
+
+def pick_product(products: list, kind: str, variants: list, set_name: str = "") -> dict | None:
     """The plain retail ETB/Booster Bundle; variant words (e.g. "lucario") pick between versions."""
     candidates = [p for p in products
-                  if has_word(p.get("name", ""), kind)
+                  if not is_card(p)
+                  and has_word(p.get("name", ""), kind)
                   and not any(has_word(p.get("name", ""), w) for w in SKIP_WORDS)]
     if variants:
         candidates = [p for p in candidates if all(has_word(p["name"], v) for v in variants)]
     if len(candidates) == 1:
         return candidates[0]
-    unbracketed = [p for p in candidates if "[" not in p["name"]]
+    # Several left: the one named exactly "<Set> <Type>" is the plain retail box.
+    exact = [p for p in candidates if " ".join(normalize(p["name"]).split()) == f"{set_name} {kind}".strip()]
+    if len(exact) == 1:
+        return exact[0]
+    unbracketed = [p for p in candidates if "[" not in p["name"] and "(" not in p["name"]]
     return unbracketed[0] if len(unbracketed) == 1 else None
 
 
@@ -110,6 +124,8 @@ class MarketPrices:
     def _load(self) -> None:
         try:
             data = json.loads(self.cache_path.read_text())
+            if data.get("version") != CACHE_VERSION:
+                return  # matched by older rules: fetch again
             self.by_product, self.fetched_at = data["by_product"], float(data["fetched_at"])
         except (OSError, ValueError, KeyError, TypeError):
             pass
@@ -117,7 +133,8 @@ class MarketPrices:
     def _save(self) -> None:
         self.cache_path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.cache_path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"fetched_at": self.fetched_at, "by_product": self.by_product}, indent=2))
+        tmp.write_text(json.dumps({"version": CACHE_VERSION, "fetched_at": self.fetched_at,
+                                   "by_product": self.by_product}, indent=2))
         tmp.replace(self.cache_path)
 
     def get(self, product_id: str):
@@ -149,12 +166,13 @@ class MarketPrices:
 async def fetch_market(products: list) -> dict:
     """Download the needed sets and match every product. ~2 requests per set."""
     groups = _results(await http.get_json(f"{BASE}/groups"))
-    plans = {}
+    plans, derived = {}, {}
     for p in products:
         kind = product_type(p.name)
         if not kind:
             continue
         derived_set, variants = set_and_variants(p.name, kind)
+        derived[p.id] = derived_set
         group = pick_group(groups, p.extra.get("set") or derived_set)
         plans[p.id] = (p, kind, variants, group)
 
@@ -175,7 +193,7 @@ async def fetch_market(products: list) -> dict:
         if p.extra.get("tcgplayer_id"):
             match = next((x for x in prods if x.get("productId") == int(p.extra["tcgplayer_id"])), None)
         else:
-            match = pick_product(prods, kind, variants)
+            match = pick_product(prods, kind, variants, normalize(p.extra.get("set") or derived[p.id]))
         if not match:
             out[pid] = {"price": None, "why": f"no single {kind} match in {group['name']}"}
             continue

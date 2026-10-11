@@ -61,6 +61,17 @@ def test_pick_product_skips_center_cases_and_uses_variant():
     assert pick_product(ME, "elite trainer box", []) is None  # ambiguous: two versions
 
 
+def test_promo_cards_named_after_the_box_are_ignored():
+    promo = {"productId": 9, "name": "Eevee - 173 (Destined Rivals Elite Trainer Box Exclusive)",
+             "extendedData": [{"name": "Number", "value": "173"}, {"name": "Rarity", "value": "Promo"}]}
+    assert pick_product(DR + [promo], "elite trainer box", [], "destined rivals")["productId"] == 624676
+
+
+def test_exact_name_wins_when_several_sealed_match():
+    extra = {"productId": 8, "name": "Destined Rivals Elite Trainer Box (Japanese Import)"}
+    assert pick_product(DR + [extra], "elite trainer box", [], "destined rivals")["productId"] == 624676
+
+
 def test_market_price_prefers_market_then_mid():
     rows = [{"productId": 1, "marketPrice": None, "midPrice": 61.5, "subTypeName": "Normal"},
             {"productId": 2, "marketPrice": 72.349, "midPrice": 70, "subTypeName": "Normal"}]
@@ -150,3 +161,14 @@ def test_below_market_reseller_deal_alert(monkeypatch):
     for i in range(2):
         asyncio.run(sched.run_checks([p], state, send_alert, now=1000 + 60 * i))
     assert sent == [("deal", 88.0, 100.0)]  # 95 is only 5% under market; 88 is 12% under
+
+
+def test_cache_from_older_matching_rules_is_ignored(tmp_path):
+    import json
+    path = tmp_path / "market.json"
+    path.write_text(json.dumps({"fetched_at": 1, "by_product": {"a": {"price": 1}}}))
+    assert MarketPrices(cache_path=path).by_product == {}
+    mp = MarketPrices(cache_path=path)
+    mp.by_product, mp.fetched_at = {"a": {"price": 5}}, 9
+    mp._save()
+    assert MarketPrices(cache_path=path).get("a") == 5
