@@ -35,6 +35,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 
 from monitors.errors import CheckFailed
 from monitors.http import http
+from utils.text import title_matches
 
 API_BASE = "https://developer.api.walmart.com/api-proxy/service/affil/product/v2"
 LOOKUP_URL = f"{API_BASE}/items"
@@ -186,24 +187,49 @@ async def check_product(product: dict) -> dict:
     return parse_item(item, product)
 
 
-async def search_items(query: str, limit: int = 10) -> list:
-    """Walmart search, for finding item ids to watch. One API call."""
-    data = await _signed_get(SEARCH_URL, {"query": query, "numItems": str(min(max(limit, 1), 25))})
-    items = data.get("items") if isinstance(data, dict) else None
-    if items is None:
+ACCESSORY_WORDS = ("case", "protector", "acrylic", "display", "sleeve", "sleeves", "binder",
+                   "album", "portfolio", "deck box", "playmat", "storage")
+
+
+def _search_items_from(data) -> list:
+    """Walmart leaves `items` out entirely when nothing matches; that's 0 results, not an error."""
+    if not isinstance(data, dict):
         raise CheckFailed("unexpected response from Walmart search")
+    if "items" in data:
+        return data["items"] or []
+    errors = data.get("errors") or data.get("error")
+    if errors:
+        if isinstance(errors, list) and errors and isinstance(errors[0], dict):
+            errors = errors[0].get("message") or errors[0]
+        raise CheckFailed(f"Walmart search error: {str(errors)[:200]}")
+    return []
+
+
+async def search_items(query: str, limit: int = 10, relevant_only: bool = True) -> list:
+    """Walmart search, for finding item ids to watch. One API call.
+
+    relevant_only keeps titles containing every query word and drops accessories
+    (cases, protectors, sleeves...), which otherwise crowd out the real product.
+    """
+    data = await _signed_get(SEARCH_URL, {"query": query, "numItems": "25"})
+    words = [w for w in query.split() if w]
     results = []
-    for item in items:
+    for item in _search_items_from(data):
         if not item.get("itemId"):
+            continue
+        name = item.get("name", "Untitled")
+        if relevant_only and (not title_matches(name, require_all=words)
+                              or title_matches(name, include_any=ACCESSORY_WORDS)):
             continue
         parsed = parse_item(item, {"allow_marketplace": True})
         results.append({
             "item_id": str(item["itemId"]),
-            "name": item.get("name", "Untitled"),
+            "name": name,
             "url": item_url(item["itemId"]),
             "price": parsed["price"],
             "available": parsed["in_stock"],
             "first_party": is_first_party(item),
             "seller": item.get("sellerInfo") or "Walmart",
         })
-    return results
+    results.sort(key=lambda r: not r["first_party"])  # Walmart's own listings first
+    return results[:limit]

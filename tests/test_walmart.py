@@ -299,3 +299,39 @@ def test_commands_register():
     assert {"checknow", "walmartfind", "status", "testalert"} <= names
     checknow = tree.get_command("checknow")
     assert [p.name for p in checknow.parameters] == ["store", "filter", "only_in_stock"]
+
+
+def test_search_no_results_is_not_an_error(monkeypatch):
+    monkeypatch.setattr(walmart, "_credentials", lambda: ("c", "1", None))
+    monkeypatch.setattr(walmart, "auth_headers", lambda *a, **k: {})
+
+    async def empty(url, params=None, headers=None):
+        return {"query": "white flare booster bundle", "totalResults": 0}
+
+    monkeypatch.setattr(walmart.http, "get_json", empty)
+    assert asyncio.run(walmart.search_items("white flare booster bundle")) == []
+
+    async def error(url, params=None, headers=None):
+        return {"errors": [{"code": 4003, "message": "Invalid query"}]}
+
+    monkeypatch.setattr(walmart.http, "get_json", error)
+    with pytest.raises(CheckFailed, match="Invalid query"):
+        asyncio.run(walmart.search_items("x"))
+
+
+def test_search_drops_accessories_and_unrelated(monkeypatch):
+    monkeypatch.setattr(walmart, "_credentials", lambda: ("c", "1", None))
+    monkeypatch.setattr(walmart, "auth_headers", lambda *a, **k: {})
+
+    async def fake(url, params=None, headers=None):
+        return {"items": [
+            item(itemId=1, name="Acrylic Display Case for Pokemon 151 Booster Bundle Box"),
+            item(itemId=2, name="Pokemon Ascended Heroes Gastly Tech Sticker Collection"),
+            item(itemId=3, name="Collectible Ascended Heroes Booster Bundle", marketplace=True,
+                 sellerInfo="Toywiz"),
+            item(itemId=4, name="Pokemon TCG Mega Evolution Ascended Heroes Booster Bundle"),
+        ]}
+
+    monkeypatch.setattr(walmart.http, "get_json", fake)
+    results = asyncio.run(walmart.search_items("ascended heroes booster bundle"))
+    assert [r["item_id"] for r in results] == ["4", "3"]  # Walmart's own first, no cases/stickers

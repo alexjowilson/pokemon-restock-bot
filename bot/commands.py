@@ -97,7 +97,8 @@ def store_matches(name: str, wanted: str | None) -> bool:
 def format_walmart_find(query: str, results: list) -> str:
     """/walmartfind output: who sells it right now, price, item id to paste into config."""
     if not results:
-        return f"🔎 **Walmart** search `{query}`: nothing found"
+        return (f"🔎 **Walmart** search `{query}`: nothing found. Walmart's search often hides sold-out "
+                f"items; you can also paste a walmart.com product URL into config.yaml instead.")
     lines = [f"🔎 **Walmart** search `{query}`: {len(results)} result(s). "
              f"Copy an `item_id` into config.yaml to watch it."]
     for r in results:
