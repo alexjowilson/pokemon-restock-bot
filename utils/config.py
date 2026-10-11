@@ -125,6 +125,37 @@ def _id_map(raw, what: str) -> dict:
     return {str(k).lower(): v for k, raw_v in raw.items() if (v := _optional_int(raw_v))}
 
 
+def _walmart_watch(entries, configured) -> list:
+    """Expand `walmart_watch:` groups (one product name, several Walmart pages) into products.
+
+    Walmart lists the same ETB on several pages and only one is usually sold by Walmart
+    itself, so each group watches every page and the alert uses the group's clean name.
+    These are checked quietly: a page Walmart removes reads as unavailable, failures
+    only log (one outage shouldn't post 40 warnings), and the first check records the
+    current state without alerting.
+    """
+    taken = {str(p.extra.get("item_id") or "") for p in configured if p.retailer == "walmart"}
+    taken |= {p.url.rstrip("/").rsplit("/", 1)[-1] for p in configured if p.retailer == "walmart"}
+    products = []
+    for entry in entries:
+        name = entry.get("name")
+        ids = entry.get("item_ids") or []
+        if not name or not ids:
+            raise RuntimeError("Each walmart_watch entry needs a `name` and `item_ids`")
+        options = {k: v for k, v in entry.items() if k in ("max_price", "allow_marketplace")}
+        for raw_id in ids:
+            item_id = str(int(raw_id))
+            if item_id in taken:
+                continue  # already watched (e.g. listed under products:)
+            taken.add(item_id)
+            products.append(Product(
+                id=f"wmw_{item_id}", name=name, retailer="walmart",
+                url=f"https://www.walmart.com/ip/{item_id}",
+                extra={"item_id": item_id, "auto": True, "baseline_first": True, **options},
+            ))
+    return products
+
+
 def _require_env(name: str) -> str:
     value = os.getenv(name)
     if not value:
@@ -160,6 +191,8 @@ def load_settings(config_path: Path = DEFAULT_CONFIG_PATH) -> Settings:
         if not url:
             raise RuntimeError(f"Product {pid} needs a `url`")
         products.append(Product(id=pid, name=p.pop("name"), retailer=retailer, url=url, extra=p))
+
+    products += _walmart_watch(raw.get("walmart_watch") or [], products)
 
     searches = []
     for raw_search in raw.get("searches", []) or []:

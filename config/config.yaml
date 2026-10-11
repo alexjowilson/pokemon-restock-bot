@@ -71,65 +71,19 @@ searches:
     exclude: *pokemon_exclude
 
   # ---------- Walmart (needs the Walmart .env keys) ----------
-  # Two searches + auto-watch, sized for Walmart's 5,000 calls/day (~4,130/day as set up):
-  #   1. "walmart"      newest listings, every 5 min        -> brand-new drops    (576/day)
-  #   2. "walmart_sets" each set by name, every hour        -> finds item pages   (672/day)
-  #      Every ETB/Booster Bundle page it finds is auto-watched: checked every minute
-  #      (20 items per API call, up to 40 items total)       -> restocks          (2,880/day)
-  # Only Walmart-sold listings alert. A reseller-only page stays watched quietly and
-  # alerts the moment Walmart itself sells it. Alerts go to retailer_channels.walmart.
+  # Walmart's search API ignores sorting and mostly returns single cards, so this is
+  # only a cheap safety net for brand-new listings. The real coverage is walmart_watch
+  # below. Only Walmart-sold listings alert; resellers never ping.
   - id: "walmart"                       # keep this id: saved history uses it
     retailer: "walmart"
     store_name: "Walmart · new listings"
-    sort: "new"
     queries:
       - "pokemon elite trainer box"
       - "pokemon booster bundle"
     require_all: *pokemon_require
     include_any: *sealed_types
     exclude: *pokemon_exclude
-    check_every_seconds: 300
-
-  - id: "walmart_sets"
-    retailer: "walmart"
-    store_name: "Walmart · sets"
-    sort: "relevance"
-    auto_watch: true
-    auto_watch_max_total: 40            # Walmart items watched every minute, incl. products below
-    check_every_seconds: 3600
-    queries:                            # add a set = add its two lines (+48 calls/day)
-      - "pokemon 30th celebration elite trainer box"
-      - "pokemon 30th celebration booster bundle"
-      - "pokemon delta reign elite trainer box"
-      - "pokemon delta reign booster bundle"
-      - "pokemon pitch black elite trainer box"
-      - "pokemon pitch black booster bundle"
-      - "pokemon chaos rising elite trainer box"
-      - "pokemon chaos rising booster bundle"
-      - "pokemon perfect order elite trainer box"
-      - "pokemon perfect order booster bundle"
-      - "pokemon ascended heroes elite trainer box"
-      - "pokemon ascended heroes booster bundle"
-      - "pokemon phantasmal flames elite trainer box"
-      - "pokemon phantasmal flames booster bundle"
-      - "pokemon mega evolution elite trainer box"
-      - "pokemon mega evolution booster bundle"
-      - "pokemon prismatic evolutions elite trainer box"
-      - "pokemon prismatic evolutions booster bundle"
-      - "pokemon destined rivals elite trainer box"
-      - "pokemon destined rivals booster bundle"
-      - "pokemon journey together elite trainer box"
-      - "pokemon journey together booster bundle"
-      - "pokemon 151 elite trainer box"
-      - "pokemon 151 booster bundle"
-      - "pokemon black bolt elite trainer box"
-      - "pokemon black bolt booster bundle"
-      - "pokemon white flare elite trainer box"
-      - "pokemon white flare booster bundle"
-    require_all: *pokemon_require
-    include_any: *sealed_types
-    exclude: *pokemon_exclude
-    # max_price: 69.99                  # skip marked-up listings (applies to auto-watched items too)
+    check_every_seconds: 600            # 2 queries x 144/day = 288 calls/day
 
 # Single product pages to watch (optional; the searches above already cover these stores).
 products:
@@ -166,6 +120,59 @@ products:
     name: "30th Celebration Booster Bundle"
     retailer: "walmart"
     url: "https://www.walmart.com/ip/Pokemon-TCG-30th-Anniversary-Booster-Bundle-Box/20717271194"
+
+# Walmart pages to watch, grouped by product. Walmart lists the same box on several
+# pages (its own + resellers'); the bot checks every page each minute in batched
+# lookups (20 pages per API call) and alerts when Walmart ITSELF sells one, at or
+# under max_price if set. Alerts use the name here and go to retailer_channels.walmart.
+# The first check after adding a page just records it, so nothing floods.
+# Add a page: copy the number at the end of its walmart.com/ip/... URL into item_ids.
+# Budget: up to 40 pages here + under products: = 2 calls/min (2,880/day).
+walmart_watch:
+  - name: "30th Celebration Booster Bundle"
+    item_ids: [20638470762]             # + the two 30th pages under products:
+  - name: "Ascended Heroes Elite Trainer Box"
+    item_ids: [19631203263, 19629303589]
+  - name: "Ascended Heroes Booster Bundle"
+    item_ids: [18728422476]
+  - name: "Perfect Order Elite Trainer Box"
+    item_ids: [19402160990]
+  - name: "Perfect Order Booster Bundle"
+    item_ids: [19380764160]
+  - name: "Chaos Rising Booster Bundle"
+    item_ids: [19986002628]
+  - name: "Pitch Black Booster Bundle"
+    item_ids: [20724415375]
+  - name: "Phantasmal Flames Elite Trainer Box"
+    item_ids: [17780209250, 18672005065, 19897067412]
+  - name: "Phantasmal Flames Booster Bundle"
+    item_ids: [18384763311, 18638705180]
+  - name: "Mega Evolution Elite Trainer Box (Lucario)"
+    item_ids: [17961008385, 17962664093]
+  - name: "Mega Evolution Elite Trainer Box (Gardevoir)"
+    item_ids: [17867005579]
+  - name: "Mega Evolution Booster Bundle"
+    item_ids: [17344505131, 6008685750]
+  - name: "Prismatic Evolutions Elite Trainer Box"
+    item_ids: [13816151308, 15160152062]
+  - name: "Prismatic Evolutions Booster Bundle"
+    item_ids: [16688773509]
+  - name: "Destined Rivals Elite Trainer Box"
+    item_ids: [15718673510, 16728861909]
+  - name: "Destined Rivals Booster Bundle"
+    item_ids: [16019713971, 16749906607]
+  - name: "Journey Together Elite Trainer Box"
+    item_ids: [15156564532, 15749501336, 16747708630]
+  - name: "Journey Together Booster Bundle"
+    item_ids: [15780068131]
+  - name: "Black Bolt Elite Trainer Box"
+    item_ids: [16498668973, 17317016821]
+  - name: "White Flare Elite Trainer Box"
+    item_ids: [17373951770]
+  - name: "Black Bolt & White Flare Elite Trainer Box"
+    item_ids: [17337259478]
+  # Delta Reign (Nov 6) and Pitch Black / Chaos Rising ETBs: no regular Walmart page
+  # found yet. Add their ids here when Walmart lists them.
 
 # What plain /walmartfind searches for (one Walmart API call per line, only when you run it).
 walmart_find_queries:

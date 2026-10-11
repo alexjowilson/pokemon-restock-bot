@@ -81,10 +81,21 @@ def register(state: dict, search, listings: list, configured_products, now: floa
     return added
 
 
-def auto_products(state: dict, configured_products) -> list:
+def auto_products(state: dict, configured_products, searches=None) -> list:
+    """Watched products for every item an auto_watch search found.
+
+    Items whose search is no longer an auto_watch search in config.yaml are dropped,
+    so removing a search also stops its lookups.
+    """
     configured = configured_walmart_ids(configured_products)
+    active = None if searches is None else {s.id for s in searches if s.options.get("auto_watch")}
+    auto = state.get(AUTO_KEY, {})
+    if active is not None:
+        for lid in [lid for lid, e in auto.items() if e.get("search") not in active]:
+            del auto[lid]
+            state.pop(product_id(lid), None)
     products = []
-    for lid, entry in state.get(AUTO_KEY, {}).items():
+    for lid, entry in auto.items():
         if lid in configured:
             continue
         extra = {"item_id": lid, "auto": True, **entry.get("options", {})}

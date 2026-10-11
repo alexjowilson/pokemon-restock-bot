@@ -121,3 +121,11 @@ def test_budget_counts_auto_watch_cap():
                                       queries=("a", "b"), retailer="walmart", check_every_seconds=300)]
     # 40 items = 2 calls/min (2,880) + 1 query/hour (24) + 2 queries/5 min (576)
     assert walmart_calls_per_day(CONFIGURED, searches, 60) == 3480
+
+
+def test_removing_the_search_stops_its_auto_watch(monkeypatch):
+    state = {}
+    run_search(monkeypatch, state, [wm(333, "Pokemon Delta Reign ETB")], now=1_000_000)
+    assert len(autowatch.auto_products(state, CONFIGURED, [sets_search()])) == 1
+    assert autowatch.auto_products(state, CONFIGURED, []) == []
+    assert state["_auto_watch"] == {} and "auto_walmart_333" not in state

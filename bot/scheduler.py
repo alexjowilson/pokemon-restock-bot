@@ -92,8 +92,11 @@ async def run_checks(
         prev = state.get(product.id, {})
         in_stock = bool(result.get("in_stock"))
         was_in_stock = prev.get("in_stock", False)
+        # Watch-list items record what they look like on their first check instead of
+        # alerting, so adding 40 pages never posts the ones already in stock as "restocks".
+        first_look = not prev and product.extra.get("baseline_first")
 
-        if in_stock and not was_in_stock:
+        if in_stock and not was_in_stock and not first_look:
             try:
                 await send_alert({**product.as_dict(), **result})
                 log.info("Alert sent for %s", product.id)
@@ -292,7 +295,8 @@ class Scheduler:
         while True:
             started = time.monotonic()
             try:
-                products = self.products + autowatch.auto_products(self.state, self.products)
+                products = self.products + autowatch.auto_products(self.state, self.products,
+                                                                    self.searches)
                 await asyncio.gather(
                     run_checks(products, self.state, self.send_alert, self.health, self.send_health),
                     run_search_checks(self.searches, self.state, self.send_alert, self.health,

@@ -150,7 +150,24 @@ def register_commands(bot: RestockBot) -> None:
     async def status(interaction: discord.Interaction):
         state, health = bot.scheduler.state, bot.scheduler.health
         lines = []
+        # Walmart watch-list pages: one line per product, not one per page.
+        groups = {}
         for p in bot.settings.products:
+            if p.id.startswith("wmw_"):
+                groups.setdefault(p.name, []).append(p)
+        for name, pages in groups.items():
+            states = [state.get(p.id) or {} for p in pages]
+            selling = sum(1 for st in states if st.get("in_stock"))
+            failing = sum(1 for p in pages if p.id in health)
+            checked = [st["last_checked"] for st in states if "last_checked" in st]
+            icon = "✅" if selling else ("⚠️" if failing == len(pages) else "👀")
+            extra = f", {failing} failing" if failing else ""
+            when = f", checked {_ago(max(checked))}" if checked else ", not checked yet"
+            lines.append(f"{icon} **{name}** (Walmart): {len(pages)} page(s), "
+                         f"{selling} sold by Walmart now{extra}{when}")
+        for p in bot.settings.products:
+            if p.id.startswith("wmw_"):
+                continue
             s, h = state.get(p.id) or {}, health.get(p.id)
             if h:
                 lines.append(f"⚠️ **{p.name}** ({p.retailer}): failing ({h['failures']}x): `{h['last_error']}`")

@@ -10,7 +10,7 @@ Every alert includes the price, a product image, a buy link (straight to the car
 
 - 🆕 **New-listing alerts:** catches products the moment a store lists them, including preorders
 - 🔁 **Restock alerts:** fires when a known listing goes from sold out to available
-- 🏬 **Walmart, hands-off:** the bot finds every set's ETB and Booster Bundle pages on its own and checks them every minute. There are no item IDs to look up.
+- 🏬 **Walmart watch list:** every set's ETB and Booster Bundle pages (Walmart's own and resellers') are checked every minute in batched lookups, and you hear about it the moment Walmart itself sells one
 - 🚫 **Scalper filter:** a Walmart item only counts as in stock when Walmart itself sells it, with an optional `max_price`
 - 🎯 **Precise filtering:** only Pokémon ETBs and Booster Bundles; single cards, other games and accessories are ignored
 - 📺 **Channel per retailer:** for example, every Walmart alert goes to `#walmart`, with optional role pings per retailer or store
@@ -31,9 +31,7 @@ Every alert includes the price, a product image, a buy link (straight to the car
 flowchart LR
     subgraph Pi["Raspberry Pi 4 (systemd service: restock-bot)"]
         S[Scheduler<br/>every 60s] --> SR[Searches<br/>Shopify shops · Walmart]
-        S --> PR[Watched items<br/>configured + auto-watched]
-        SR -- "items found<br/>(Walmart sets)" --> AW[Auto-watch list]
-        AW --> PR
+        S --> PR[Watched items<br/>products + walmart_watch]
         SR --> F[Filters<br/>Pokémon + ETB/Bundle]
         PR --> F
         F --> D{Changed since<br/>last check?}
@@ -68,24 +66,27 @@ The bot is one Python process running a loop. Every pass, it asks each store wha
 
 ### How Walmart is watched
 
-Walmart is the hardest store to catch. It has thousands of reseller listings, its restocks sell out in minutes, and its API allows **5,000 calls a day**. The bot handles it in three layers:
+Walmart is the hardest store to catch: thousands of reseller listings, restocks that sell out in minutes, and an API limit of **5,000 calls a day**. Testing showed that Walmart's **search** API is little help. It ignores sort order, a set's results are mostly 35¢ singles, and the regular ETBs and Booster Bundles usually don't appear at all. Its **item lookup** API is reliable, though, so the bot watches known item pages:
 
-| Layer | What it does | How often | API calls/day |
+| Part | What it does | How often | API calls/day |
 |---|---|---|---|
-| **`walmart` search** | Asks for the *newest* ETB / Booster Bundle listings; alerts on any Walmart-sold one it hasn't seen | every 5 min | ~576 |
-| **`walmart_sets` search** | Searches each set by name (14 sets × ETB + Booster Bundle) and adds every page it finds to the auto-watch list | hourly | ~672 |
-| **Auto-watch** (`bot/autowatch.py`) | Checks every found page, plus any you list yourself, in batched lookups of 20 IDs per call, up to 40 items | every minute | ~2,880 |
+| **`walmart_watch`** (config) | Each product (e.g. "Destined Rivals Elite Trainer Box") lists every Walmart page selling it. All pages are checked in batched lookups of 20 per call. | every minute | ~2,880 for up to 40 pages |
+| **`walmart` search** | A cheap safety net: alerts on a Walmart-sold ETB or Booster Bundle it has never seen in the broad search results | every 10 min | ~288 |
 
-That's about **4,130 calls a day**, which leaves headroom for `/walmartfind`. The bot estimates usage at startup and logs a warning if your config would go over about 4,500.
+That's about **3,170 calls a day**, which leaves headroom for `/walmartfind`. The bot estimates usage at startup and logs a warning if your config would go over about 4,500.
 
-**Resellers:** a listing sold only by a third party counts as **not in stock** and is never announced as new. It stays on the auto-watch list, though, so if Walmart itself starts selling that page, the next minute's check sees "sold out → in stock" and alerts. `max_price` adds a second guard: a listing above it doesn't count either.
+**Why several pages per product:** Walmart often lists the same box on several pages. Usually one is Walmart's own and the rest are resellers', and which page Walmart sells from can change. Watching them all means whichever one Walmart restocks is caught. The alert uses the clean product name from the config.
+
+**Resellers:** a page sold only by a third party counts as **not in stock**, so it never alerts. If Walmart itself starts selling that page, the next minute's check sees "sold out → in stock" and alerts. `max_price` adds a second guard: a listing above it doesn't count either.
+
+**Quiet start:** the first check of a newly added page only records its state, so adding 40 pages never floods the channel. A page Walmart removes reads as unavailable instead of an error.
 
 ### Reliability
 
 - A **failed check never counts as "out of stock"**, so network errors can't cause fake "back in stock" alerts.
 - **Exponential backoff with jitter** kicks in after repeated failures, and backs off harder when a site returns HTTP 403 / 429.
 - **Polite by design:** at least 2 seconds between requests to the same store website (0.5s for Walmart's quota-based API), and an honest User-Agent that identifies the bot.
-- **Health alerts:** after 5 failed checks in a row the bot posts ⚠️ in Discord, then ✅ when the store recovers. Auto-watched items only log their failures, so one Walmart outage doesn't post 40 warnings; the configured items and searches on the same API still raise the alarm.
+- **Health alerts:** after 5 failed checks in a row the bot posts ⚠️ in Discord, then ✅ when the store recovers. Watch-list pages only log their failures, so one Walmart outage doesn't post 40 warnings; the items under `products:` and the Walmart search use the same API and still raise the alarm.
 - **systemd** restarts the bot if it crashes and starts it on boot.
 
 ---
@@ -132,7 +133,7 @@ pokemon-restock-bot/
 │  ├─ commands.py        # /status, /checknow, /walmartfind, /testalert
 │  ├─ notifier.py        # Alert embed layout + ✅/❌ reactions
 │  ├─ scheduler.py       # Polling loop, change detection, backoff, health alerts
-│  └─ autowatch.py       # Turns items found by Walmart searches into watched products
+│  └─ autowatch.py       # Optional: turn items a search finds into watched products
 ├─ monitors/
 │  ├─ __init__.py        # Registries: retailer → check function, retailer → search function
 │  ├─ http.py            # Shared aiohttp client (rate limiting, error handling)
@@ -141,6 +142,8 @@ pokemon-restock-bot/
 │  ├─ shopify.py         # Shopify search + product monitors
 │  ├─ bestbuy.py         # Best Buy Products API monitor (needs API key)
 │  └─ demo.py            # Fake monitor for testing the pipeline
+├─ scripts/
+│  └─ walmart_probe.py   # Shows what Walmart's search returns for a query
 ├─ utils/
 │  ├─ config.py          # Loads config.yaml + .env into typed settings; API budget check
 │  ├─ state.py           # Reads/writes data/state.json atomically
@@ -297,32 +300,30 @@ searches:
 
 To add a shop, open any product page on it and add **`.js`** to the end of the URL. If you see JSON, it's a Shopify store and will work. Copy a block, give it a new `id`, `store_name` and `store_url`, deploy, and run `/checknow`.
 
-**Walmart:** no `store_url` needed.
+**Walmart search** (a safety net; no `store_url` needed):
 
 ```yaml
-  - id: "walmart"                 # newest listings → brand-new drops
+  - id: "walmart"
     retailer: "walmart"
-    sort: "new"
-    check_every_seconds: 300
+    store_name: "Walmart · new listings"
+    check_every_seconds: 600
     queries: ["pokemon elite trainer box", "pokemon booster bundle"]
     require_all: ["pokemon"]
     include_any: ["elite trainer box", "etb", "booster bundle"]
-
-  - id: "walmart_sets"            # each set by name → auto-watched every minute
-    retailer: "walmart"
-    sort: "relevance"
-    auto_watch: true
-    auto_watch_max_total: 40      # Walmart items checked every minute, incl. your products
-    check_every_seconds: 3600
-    queries:
-      - "pokemon 30th celebration elite trainer box"
-      - "pokemon 30th celebration booster bundle"
-      # ...two lines per set
-    # max_price: 69.99            # skip marked-up listings
-    # allow_marketplace: false    # true = third-party sellers count too
 ```
 
-To watch another set, add its two query lines to `walmart_sets`, which costs 48 calls a day. The real config uses YAML anchors (`&pokemon_require`, `*sealed_types`, …) so every store shares one set of filters.
+The real config uses YAML anchors (`&pokemon_require`, `*sealed_types`, …) so every store shares one set of filters.
+
+### Walmart watch list
+
+```yaml
+walmart_watch:
+  - name: "Destined Rivals Elite Trainer Box"   # used in the alert
+    item_ids: [15718673510, 16728861909]         # every walmart.com/ip/<id> page selling it
+    # max_price: 59.99                           # ignore marked-up listings
+```
+
+To add a product or a page, find it on walmart.com and copy the number at the end of its URL (`walmart.com/ip/.../<number>`) into `item_ids`. Skip Pokémon Center exclusives, multi-packs and cases, since Walmart doesn't sell those itself. 20 pages cost one API call per minute, so up to 40 pages fits comfortably in the budget. `/status` shows one line per product with how many of its pages Walmart is selling.
 
 ### Specific items (optional)
 
@@ -332,7 +333,7 @@ Add one product page under `products:` to watch it every pass:
 - **Shopify:** `retailer: "shopify"` with its product `url`.
 - **Best Buy:** `retailer: "bestbuy"` with a `sku`.
 
-Walmart items you list here share the auto-watch's batched lookups.
+Walmart items listed here share the watch list's batched lookups.
 
 ### Environment variables (`.env`)
 
@@ -355,7 +356,7 @@ Walmart items you list here share the auto-watch's batched lookups.
 
 | Command | What it does |
 |---|---|
-| `/status` | What's being watched, when each store was last checked, how many Walmart items are auto-watched, and any failing stores |
+| `/status` | What's being watched, when each store was last checked, one line per Walmart watch-list product, and any failing stores |
 | `/checknow` | Checks every store right now and lists the results as clickable links, without sending alerts. Options: `store` (e.g. Walmart), `filter` (e.g. `30th celebration`), `only_in_stock` |
 | `/walmartfind` | Searches Walmart and shows each result's seller (🏪 Walmart or 🔁 reseller), price and `item_id`. With no query, it runs every line in `walmart_find_queries`. Option: `walmart_only` |
 | `/testalert` | Posts a sample alert to the default channel to check permissions |
@@ -366,7 +367,7 @@ Walmart items you list here share the auto-watch's batched lookups.
 
 | Retailer | Status | How |
 |---|---|---|
-| **Walmart** | ✅ Supported | Official Walmart.io Affiliate API (free key): new-listing search, per-set auto-watch, Walmart-sold only by default |
+| **Walmart** | ✅ Supported | Official Walmart.io Affiliate API (free key): watch list of item pages checked every minute, plus a new-listing search; Walmart-sold only by default |
 | **Shopify card shops** | ✅ Supported | Public JSON endpoints; no key needed |
 | **Best Buy** | 🟡 Built, needs a key | Official Products API; keys require a company email |
 | **Target** | 🔜 Possible | Only an unofficial endpoint; not built |
@@ -382,7 +383,7 @@ pip install pytest
 pytest
 ```
 
-There are 92 tests. They cover alert de-duplication, new-listing and restock detection, the quiet first pass, backoff and health alerts, and title filtering. They also cover Shopify, Best Buy and Walmart response parsing, Walmart request signing and batching, the reseller and `max_price` rules, auto-watch, the API call budget, per-retailer channel routing, the alert layout, and HTTP status handling against a real local server.
+There are 97 tests. They cover alert de-duplication, new-listing and restock detection, the quiet first pass, backoff and health alerts, and title filtering. They also cover Shopify, Best Buy and Walmart response parsing, Walmart request signing and batching, the reseller and `max_price` rules, the Walmart watch list, the API call budget, per-retailer channel routing, the alert layout, and HTTP status handling against a real local server.
 
 ---
 
@@ -395,7 +396,7 @@ There are 92 tests. They cover alert de-duplication, new-listing and restock det
 - [x] Backoff, per-host rate limiting, health alerts
 - [x] ✅/❌ voting, per-store and per-retailer channels, role pings
 - [x] systemd deployment on Raspberry Pi 4
-- [x] Walmart: official API, batched lookups, new-listing search, per-set auto-watch
+- [x] Walmart: official API, batched lookups, watch list, new-listing search
 - [ ] `/testalert retailer:walmart` to test a retailer's channel
 - [ ] Watchdog (e.g. healthchecks.io) to alert if the Pi itself goes offline
 - [ ] Target monitor
