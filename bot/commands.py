@@ -218,15 +218,22 @@ def register_commands(bot: RestockBot) -> None:
         return [discord.app_commands.Choice(name=n, value=n)
                 for n in store_names(bot.settings) if store_matches(n, current)][:25]
 
-    @tree.command(name="walmartfind", description="Search Walmart to find item ids worth watching")
-    @discord.app_commands.describe(query="e.g. chaos rising booster bundle")
+    @tree.command(name="walmartfind",
+                  description="Search Walmart for item ids to watch (no query = search every set)")
+    @discord.app_commands.describe(
+        query="e.g. chaos rising booster bundle. Leave empty to search all your sets",
+        walmart_only="Only show listings sold by Walmart itself",
+    )
     @discord.app_commands.default_permissions(manage_guild=True)
-    async def walmartfind(interaction: discord.Interaction, query: str):
+    async def walmartfind(interaction: discord.Interaction, query: str | None = None,
+                          walmart_only: bool = False):
         await interaction.response.defer(ephemeral=True, thinking=True)
-        try:
-            results = await walmart.search_items(query, limit=10)
-        except CheckFailed as e:
-            await interaction.followup.send(f"⚠️ Walmart search failed: `{e}`", ephemeral=True)
-            return
-        for chunk in chunk_messages([format_walmart_find(query, results)]):
+        queries = [query] if query else list(bot.settings.walmart_find_queries)
+        results, failed = await walmart.search_many(queries)
+        if walmart_only:
+            results = [r for r in results if r["first_party"]]
+        label = query or f"all {len(queries)} saved searches"
+        blocks = [format_walmart_find(label, results)]
+        blocks += [f"⚠️ `{q}`: {err}" for q, err in failed]
+        for chunk in chunk_messages(blocks):
             await interaction.followup.send(chunk, ephemeral=True)

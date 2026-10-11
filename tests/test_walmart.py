@@ -299,6 +299,8 @@ def test_commands_register():
     assert {"checknow", "walmartfind", "status", "testalert"} <= names
     checknow = tree.get_command("checknow")
     assert [p.name for p in checknow.parameters] == ["store", "filter", "only_in_stock"]
+    find = tree.get_command("walmartfind")
+    assert [(p.name, p.required) for p in find.parameters] == [("query", False), ("walmart_only", False)]
 
 
 def test_search_no_results_is_not_an_error(monkeypatch):
@@ -335,3 +337,19 @@ def test_search_drops_accessories_and_unrelated(monkeypatch):
     monkeypatch.setattr(walmart.http, "get_json", fake)
     results = asyncio.run(walmart.search_items("ascended heroes booster bundle"))
     assert [r["item_id"] for r in results] == ["4", "3"]  # Walmart's own first, no cases/stickers
+
+
+def test_search_many_merges_dedupes_and_survives_failures(monkeypatch):
+    async def fake_search(query, limit=10):
+        if query == "broken":
+            raise CheckFailed("HTTP 500")
+        shared = {"item_id": "9", "name": "Shared", "url": "u9", "price": 1.0, "available": True,
+                  "first_party": False, "seller": "X"}
+        own = {"item_id": query, "name": query, "url": "u", "price": 2.0, "available": False,
+               "first_party": True, "seller": "Walmart"}
+        return [shared, own]
+
+    monkeypatch.setattr(walmart, "search_items", fake_search)
+    results, failed = asyncio.run(walmart.search_many(["a", "broken", "b"]))
+    assert [r["item_id"] for r in results] == ["a", "b", "9"]  # Walmart's own first, "9" once
+    assert failed == [("broken", "HTTP 500")]

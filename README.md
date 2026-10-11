@@ -280,7 +280,7 @@ By default an item only counts as in stock when **Walmart itself** sells it, so 
 |---|---|
 | `/status` | What's being watched, when each store was last checked, and any failing stores |
 | `/checknow` | Checks every store right now and lists results as clickable links. Options: `store` (e.g. Walmart), `filter` (e.g. `30th celebration`), `only_in_stock`. Doesn't send alerts. |
-| `/walmartfind` | Searches Walmart and shows each result's seller (🏪 Walmart or 🔁 reseller), price and `item_id` to paste into config.yaml |
+| `/walmartfind` | No query: runs every search in `walmart_find_queries` (config.yaml). With a query: just that one. Option `walmart_only`. Shows each result's seller (🏪 Walmart or 🔁 reseller), price and `item_id` to paste into config.yaml |
 | `/testalert` | Posts a sample alert to check the channel and permissions |
 
 ---

@@ -12,6 +12,15 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "config.yaml"
 
 
+DEFAULT_WALMART_FIND_QUERIES = (
+    "30th celebration booster bundle", "30th celebration elite trainer box",
+    "chaos rising booster bundle", "pitch black booster bundle", "perfect order booster bundle",
+    "delta reign booster bundle", "ascended heroes booster bundle",
+    "prismatic evolutions booster bundle", "phantasmal flames booster bundle",
+    "151 booster bundle", "white flare booster bundle", "black bolt booster bundle",
+)
+
+
 @dataclass(frozen=True)
 class Product:
     id: str
@@ -56,6 +65,7 @@ class Settings:
     products: list[Product]
     searches: list[Search] = field(default_factory=list)
     vote_reactions: bool = True
+    walmart_find_queries: tuple = ()  # what plain /walmartfind searches for
 
 
 def _optional_int(value) -> int | None:
@@ -134,4 +144,5 @@ def load_settings(config_path: Path = DEFAULT_CONFIG_PATH) -> Settings:
         products=products,
         searches=searches,
         vote_reactions=bool(discord_cfg.get("vote_reactions", True)),
+        walmart_find_queries=tuple(raw.get("walmart_find_queries") or DEFAULT_WALMART_FIND_QUERIES),
     )

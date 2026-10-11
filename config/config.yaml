@@ -99,3 +99,18 @@ products:
     name: "30th Celebration Booster Bundle"
     retailer: "walmart"
     url: "https://www.walmart.com/ip/Pokemon-TCG-30th-Anniversary-Booster-Bundle-Box/20717271194"
+
+# What plain /walmartfind searches for (one Walmart API call per line, only when you run it).
+walmart_find_queries:
+  - "30th celebration booster bundle"
+  - "30th celebration elite trainer box"
+  - "chaos rising booster bundle"
+  - "pitch black booster bundle"
+  - "perfect order booster bundle"
+  - "delta reign booster bundle"
+  - "ascended heroes booster bundle"
+  - "prismatic evolutions booster bundle"
+  - "phantasmal flames booster bundle"
+  - "151 booster bundle"
+  - "white flare booster bundle"
+  - "black bolt booster bundle"

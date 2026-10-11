@@ -233,3 +233,19 @@ async def search_items(query: str, limit: int = 10, relevant_only: bool = True) 
         })
     results.sort(key=lambda r: not r["first_party"])  # Walmart's own listings first
     return results[:limit]
+
+
+async def search_many(queries, per_query: int = 10) -> tuple:
+    """Run several searches (one call each), merge and de-duplicate by item id.
+
+    Returns (results, failed_queries). One failed query doesn't sink the rest.
+    """
+    merged, failed = {}, []
+    for query in queries:
+        try:
+            for r in await search_items(query, limit=per_query):
+                merged.setdefault(r["item_id"], {**r, "query": query})
+        except CheckFailed as e:
+            failed.append((query, str(e)))
+    results = sorted(merged.values(), key=lambda r: (not r["first_party"], not r["available"]))
+    return results, failed
