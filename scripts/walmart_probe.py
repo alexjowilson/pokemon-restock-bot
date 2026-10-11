@@ -4,6 +4,7 @@ Run on the Pi (uses the same .env keys as the bot):
     venv/bin/python -m scripts.walmart_probe "destined rivals"
     venv/bin/python -m scripts.walmart_probe "destined rivals" --pages 6
     venv/bin/python -m scripts.walmart_probe --raw "pokemon elite trainer box"
+    venv/bin/python -m scripts.walmart_probe --item 20640569221
 
 For a set name it tries several query shapes, pages through the results (25 per
 page), and prints only the ETBs and Booster Bundles it finds, so you can see which
@@ -92,14 +93,35 @@ async def probe_raw(query: str, pages: int) -> None:
             print(f"    {seller} {item.get('itemId')} ${item.get('salePrice')}  {item.get('name', '')[:90]}")
 
 
+async def probe_item(item_id: str) -> None:
+    """Everything Walmart's item lookup returns for one page (1 API call)."""
+    import json
+    data = await walmart._signed_get(walmart.LOOKUP_URL, {"ids": str(int(item_id))})
+    items = (data.get("items") or []) if isinstance(data, dict) else []
+    if not items:
+        print("No item returned. Raw response:", str(data)[:400])
+        return
+    item = items[0]
+    keep = ("itemId", "name", "salePrice", "msrp", "standardShipRate", "stock", "availableOnline",
+            "marketplace", "sellerInfo", "offerType", "isTwoDayShippingEligible", "clearance",
+            "preOrder", "bundle", "freight", "modelNumber", "upc")
+    print(json.dumps({k: item.get(k) for k in keep if k in item}, indent=2))
+    print("\nOther fields:", ", ".join(sorted(k for k in item if k not in keep)))
+    print("\nBot reads this as:", walmart.parse_item(item, {}))
+
+
 async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("query", help='set name, e.g. "destined rivals" (or any query with --raw)')
+    parser.add_argument("query", help='set name, e.g. "destined rivals"; any query with --raw; '
+                                      "an item id with --item")
     parser.add_argument("--pages", type=int, default=4, help="pages of 25 to scan per query (default 4)")
     parser.add_argument("--raw", action="store_true", help="print every result for one exact query")
+    parser.add_argument("--item", action="store_true", help="print the item lookup for one item id")
     args = parser.parse_args()
     try:
-        if args.raw:
+        if args.item:
+            await probe_item(args.query)
+        elif args.raw:
             await probe_raw(args.query, args.pages)
         else:
             await probe_set(args.query, args.pages)
