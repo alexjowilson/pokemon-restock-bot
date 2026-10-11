@@ -14,9 +14,9 @@ import random
 import time
 from typing import Awaitable, Callable, Optional
 
-from monitors import MONITORS
+from monitors import MONITORS, SEARCHERS
 from monitors.errors import Blocked, CheckFailed
-from monitors.shopify import listing_age_hours, search_listings
+from monitors.shopify import listing_age_hours
 from utils.text import title_matches
 from utils.config import Product
 from utils.state import load_state, save_state
@@ -111,11 +111,14 @@ async def run_checks(
 
 async def search_once(search) -> list:
     """Run every query for one store and merge results. Raises CheckFailed on failure."""
+    searcher = SEARCHERS.get(search.retailer)
+    if searcher is None:
+        raise CheckFailed(f"searches don't support retailer {search.retailer!r} "
+                          f"(supported: {', '.join(SEARCHERS)})")
     merged = {}
     try:
         for query in search.queries:
-            for listing in await asyncio.wait_for(search_listings(search.store_url, query),
-                                                  CHECK_TIMEOUT_SECONDS):
+            for listing in await asyncio.wait_for(searcher(search, query), CHECK_TIMEOUT_SECONDS):
                 if title_matches(listing["name"], search.require_all, search.include_any,
                                  search.exclude):
                     entry = merged.setdefault(listing["listing_id"], {**listing, "queries": []})
@@ -128,6 +131,22 @@ async def search_once(search) -> list:
         log.exception("Unexpected error searching %s", search.id)
         raise CheckFailed(f"bug in search: {type(e).__name__}: {e}") from e
     return list(merged.values())
+
+
+def _search_due(search, st: dict, now: float) -> bool:
+    """Searches on quota-limited APIs (Walmart) run less often than the main loop."""
+    every = search.check_every_seconds
+    # A few seconds of slack so a 300s search doesn't slip to the 6th minute.
+    return not every or now - st.get("last_checked", 0) >= every - 5
+
+
+def _known_age_hours(listing: dict, now: float):
+    """Age from the search result itself, when the retailer provides one.
+
+    Walmart doesn't, so its listings rely on the seen-list plus newest-first sorting.
+    """
+    listed_at = listing.get("listed_at")
+    return None if listed_at is None else (now - listed_at) / 3600
 
 
 async def _safe_search(search):
@@ -154,7 +173,8 @@ async def run_search_checks(
     now = time.time() if now is None else now
     all_state = state.setdefault("_searches", {})
 
-    due = [s for s in searches if health.get(s.id, {}).get("next_try", 0) <= now]
+    due = [s for s in searches if health.get(s.id, {}).get("next_try", 0) <= now
+           and _search_due(s, all_state.get(s.id, {}), now)]
     results = await asyncio.gather(*(_safe_search(s) for s in due))
 
     for search, (listings, error) in zip(due, results):
@@ -182,7 +202,9 @@ async def run_search_checks(
                 # Big stores rotate old listings in and out of the top-10 results, so confirm
                 # it was actually published recently before calling it new.
                 try:
-                    age = await listing_age_hours(listing["url"])
+                    age = _known_age_hours(listing, now)
+                    if age is None and search.retailer == "shopify":
+                        age = await listing_age_hours(listing["url"])
                 except CheckFailed as e:
                     log.warning("Couldn't verify age of %s (%s); will retry", listing["name"], e)
                     continue
@@ -191,7 +213,7 @@ async def run_search_checks(
                     kind = None
 
             if kind:
-                alert = {k: v for k, v in listing.items() if k != "queries"}
+                alert = {k: v for k, v in listing.items() if k not in ("queries", "listed_at")}
                 try:
                     await send_alert({**alert, "id": f"{search.id}:{lid}", "kind": kind,
                                       "retailer": search.retailer, "store_name": search.store_name,

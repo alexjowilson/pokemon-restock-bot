@@ -212,6 +212,9 @@ check_interval_seconds: 60
 discord:
   alert_channel_id: 0        # or ALERT_CHANNEL_ID in .env
   vote_reactions: true       # ✅/❌ under each alert
+  retailer_channels:         # optional: every alert from a retailer goes to its own channel
+    walmart: 0               # e.g. your #walmart channel ID
+  # retailer_roles: {walmart: 0}
 
 searches:
   - id: "zulus_games"                       # keep ids stable; saved history uses them
@@ -225,7 +228,18 @@ searches:
     include_any: ["elite trainer box", "etb", "booster bundle"]   # ...and one of these
     exclude: ["sleeve", "playmat"]          # ...and none of these
     # new_listing_max_age_hours: 72
+
+  - id: "walmart"                           # Walmart needs no store_url (uses the Walmart .env keys)
+    retailer: "walmart"
+    queries:                                # newest listings first, Walmart-sold only
+      - "pokemon elite trainer box"
+      - "pokemon booster bundle"
+    require_all: ["pokemon"]
+    include_any: ["elite trainer box", "etb", "booster bundle"]
+    # check_every_seconds: 300              # Walmart default; each query = 288 calls/day
 ```
+
+**Where alerts go:** a search's or product's own `channel_id`/`role_id` wins, then `retailer_channels`/`retailer_roles`, then `alert_channel_id`/`alert_role_id`.
 
 The real config uses YAML anchors (`&pokemon_queries` / `*pokemon_queries`) so every store shares one keyword list.
 
@@ -254,6 +268,8 @@ To watch one specific page instead of a search, add it under `products:` with `r
 4. Set `WALMART_CONSUMER_ID` and `WALMART_PRIVATE_KEY_PATH` in `.env`, add a product with `retailer: "walmart"`, and run `/checknow`.
 
 Find products with `/walmartfind` in Discord and add them with just `name`, `retailer: "walmart"` and `item_id`. All Walmart products are checked in one batched call (up to 20 ids), so a long list stays well under Walmart's 5,000 calls/day.
+
+**New listings:** the `searches:` entry with `retailer: "walmart"` asks Walmart for the newest matching listings every 5 minutes and alerts on any it hasn't seen before. Walmart doesn't give a listing date, so the first check quietly records what's already there. The bot warns in its log at startup if your Walmart settings would need more than ~4,500 calls/day.
 
 By default an item only counts as in stock when **Walmart itself** sells it, so reseller listings don't trigger alerts. Set `max_price` to ignore marked-up prices, or `allow_marketplace: true` to include third-party sellers.
 
@@ -293,7 +309,7 @@ By default an item only counts as in stock when **Walmart itself** sells it, so 
 | **Best Buy** | 🟡 Built, needs a key | Official Products API; keys require a company email |
 | **Target** | 🔜 Possible | Unofficial endpoint; not built yet |
 | **Amazon** | 🟡 Possible | Needs an Amazon Associates account (Creators API) |
-| **Walmart** | 🟡 Built, needs a key | Official Walmart.io Affiliate API; first-party seller only by default |
+| **Walmart** | 🟡 Built, needs a key | Official Walmart.io Affiliate API: new-listing search + item restocks; first-party seller only by default |
 | **Costco / Pokémon Center** | ❌ Not supported | No public API and active bot protection; this project doesn't try to get around it |
 
 **Adding a retailer:** write `monitors/<name>.py` with `async def check_product(product: dict) -> dict` returning `{"in_stock": bool, "price": ..., "image_url": ..., "cart_url": ...}`. Fetch with `monitors.http.http.get_json`, raise `monitors.errors.CheckFailed` on failure, and register it in `MONITORS`.
@@ -307,7 +323,7 @@ pip install pytest
 pytest
 ```
 
-The suite covers alert de-duplication, restock and new-listing detection, the per-keyword quiet first check, backoff and health alerts, title filtering, Shopify and Best Buy response parsing, the alert layout, and HTTP status handling against a real local server.
+The suite covers alert de-duplication, restock and new-listing detection, the per-keyword quiet first check, backoff and health alerts, title filtering, Shopify, Best Buy and Walmart response parsing, Walmart new-listing search and call budget, per-retailer channel routing, the alert layout, and HTTP status handling against a real local server.
 
 ---
 
@@ -322,6 +338,7 @@ The suite covers alert de-duplication, restock and new-listing detection, the pe
 - [x] systemd deployment on Raspberry Pi 4
 - [ ] Watchdog (e.g. healthchecks.io) to alert if the Pi itself goes offline
 - [x] Walmart monitor (Walmart.io Affiliate API)
+- [x] Walmart new-listing search and per-retailer channels
 - [ ] Target monitor
 - [ ] `/watch add` / `/watch remove` commands
 - [ ] Set-name filter

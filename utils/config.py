@@ -1,12 +1,15 @@
 """Loads config/config.yaml and secrets from .env into one typed object."""
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
 from dotenv import load_dotenv
+
+log = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "config.yaml"
@@ -35,7 +38,7 @@ class Product:
 
 @dataclass(frozen=True)
 class Search:
-    """Watch a Shopify store's search for new/restocked listings matching keywords."""
+    """Watch a store's search (Shopify or Walmart) for new/restocked listings matching keywords."""
     id: str
     store_name: str
     store_url: str
@@ -47,6 +50,8 @@ class Search:
     require_all: tuple = ()         # title must contain every one of these words
     include_any: tuple = ()         # ...and at least one of these (e.g. sealed product types)
     new_listing_max_age_hours: float = 72  # older listings that drift into results aren't "new"
+    check_every_seconds: int | None = None  # slower than check_interval_seconds (API quotas)
+    options: dict = field(default_factory=dict)  # retailer-specific (Walmart: max_price, ...)
 
     @property
     def name(self) -> str:  # used in health messages, like Product.name
@@ -66,11 +71,54 @@ class Settings:
     searches: list[Search] = field(default_factory=list)
     vote_reactions: bool = True
     walmart_find_queries: tuple = ()  # what plain /walmartfind searches for
+    # Default channel/role per retailer, e.g. {"walmart": 123}. A search's or product's own
+    # channel_id/role_id still wins; anything unlisted uses alert_channel_id/alert_role_id.
+    retailer_channels: dict = field(default_factory=dict)
+    retailer_roles: dict = field(default_factory=dict)
+
+    def channel_for(self, alert: dict) -> int:
+        return int(alert.get("channel_id") or self.retailer_channels.get(alert.get("retailer"))
+                   or self.alert_channel_id)
+
+    def role_for(self, alert: dict) -> int | None:
+        role = (alert.get("role_id") or self.retailer_roles.get(alert.get("retailer"))
+                or self.alert_role_id)
+        return int(role) if role else None
 
 
 def _optional_int(value) -> int | None:
     """Config IDs: missing, empty or 0 all mean "not set"."""
     return int(value) if value not in (None, "", 0, "0") else None
+
+
+# Stores whose search API doesn't need a store_url in config.
+DEFAULT_STORES = {"walmart": ("Walmart", "https://www.walmart.com")}
+# Per-search default for retailers with daily API quotas.
+DEFAULT_SEARCH_EVERY = {"walmart": 300}
+WALMART_DAILY_LIMIT = 5000
+SEARCH_KEYS = {"id", "retailer", "store_name", "store_url", "queries", "exclude", "require_all",
+               "include_any", "new_listing_max_age_hours", "channel_id", "role_id",
+               "check_every_seconds"}
+
+
+def walmart_calls_per_day(products, searches, interval: int) -> int:
+    """Product lookups are batched 20 ids per call; each search query is one call per pass."""
+    day = 86400
+    n_products = sum(1 for p in products if p.retailer == "walmart")
+    calls = -(-n_products // 20) * day / interval
+    for s in searches:
+        if s.retailer == "walmart":
+            calls += len(s.queries) * day / max(interval, s.check_every_seconds or interval)
+    return int(calls)
+
+
+def _id_map(raw, what: str) -> dict:
+    """{retailer: id} from YAML, dropping unset (0/empty) entries."""
+    if raw in (None, ""):
+        return {}
+    if not isinstance(raw, dict):
+        raise RuntimeError(f"discord.{what} should look like `walmart: 123456789`")
+    return {str(k).lower(): v for k, raw_v in raw.items() if (v := _optional_int(raw_v))}
 
 
 def _require_env(name: str) -> str:
@@ -120,10 +168,16 @@ def load_settings(config_path: Path = DEFAULT_CONFIG_PATH) -> Settings:
             queries = [queries]
         if not queries:
             raise RuntimeError(f"Search {sid} needs at least one entry in `queries`")
+        retailer = str(raw_search.get("retailer", "shopify")).lower()
+        default_name, default_url = DEFAULT_STORES.get(retailer, (None, None))
+        store_url = raw_search.get("store_url") or default_url
+        if not store_url:
+            raise RuntimeError(f"Search {sid} needs a `store_url`")
         searches.append(Search(
             id=sid,
-            store_name=raw_search.get("store_name") or raw_search["store_url"],
-            store_url=raw_search["store_url"].rstrip("/"),
+            retailer=retailer,
+            store_name=raw_search.get("store_name") or default_name or store_url,
+            store_url=store_url.rstrip("/"),
             queries=tuple(queries),
             exclude=tuple(raw_search.get("exclude", []) or []),
             require_all=tuple(raw_search.get("require_all", []) or []),
@@ -131,7 +185,16 @@ def load_settings(config_path: Path = DEFAULT_CONFIG_PATH) -> Settings:
             new_listing_max_age_hours=float(raw_search.get("new_listing_max_age_hours", 72)),
             channel_id=_optional_int(raw_search.get("channel_id")),
             role_id=_optional_int(raw_search.get("role_id")),
+            check_every_seconds=_optional_int(raw_search.get("check_every_seconds",
+                                                             DEFAULT_SEARCH_EVERY.get(retailer))),
+            options={k: v for k, v in raw_search.items() if k not in SEARCH_KEYS},
         ))
+
+    interval = max(30, int(raw.get("check_interval_seconds", 60)))
+    calls = walmart_calls_per_day(products, searches, interval)
+    if calls > WALMART_DAILY_LIMIT * 0.9:
+        log.warning("Walmart config needs ~%d API calls/day (limit %d). Raise check_every_seconds "
+                    "on Walmart searches or use fewer queries.", calls, WALMART_DAILY_LIMIT)
 
     return Settings(
         discord_token=_require_env("DISCORD_TOKEN"),
@@ -140,9 +203,11 @@ def load_settings(config_path: Path = DEFAULT_CONFIG_PATH) -> Settings:
         guild_id=int(guild_id) if guild_id else None,
         health_channel_id=int(health_channel_id) if health_channel_id else None,
         alert_role_id=int(alert_role_id) if alert_role_id else None,
-        check_interval_seconds=max(30, int(raw.get("check_interval_seconds", 60))),
+        check_interval_seconds=interval,
         products=products,
         searches=searches,
         vote_reactions=bool(discord_cfg.get("vote_reactions", True)),
         walmart_find_queries=tuple(raw.get("walmart_find_queries") or DEFAULT_WALMART_FIND_QUERIES),
+        retailer_channels=_id_map(discord_cfg.get("retailer_channels"), "retailer_channels"),
+        retailer_roles=_id_map(discord_cfg.get("retailer_roles"), "retailer_roles"),
     )

@@ -60,7 +60,7 @@ def run(monkeypatch, state, results, ages, sent):
     async def send_alert(a):
         sent.append(a["name"])
 
-    monkeypatch.setattr(sched, "search_listings", fake_search)
+    monkeypatch.setitem(sched.SEARCHERS, "shopify", lambda s, q: fake_search(s.store_url, q))
     monkeypatch.setattr(sched, "listing_age_hours", fake_age)
     asyncio.run(sched.run_search_checks([SEARCH], state, send_alert, {}, None, now=1.0))
 

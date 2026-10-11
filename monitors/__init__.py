@@ -8,6 +8,14 @@ failed check is never mistaken for "out of stock".
 """
 from monitors import bestbuy, demo, shopify, walmart
 
+# Keyword searches that catch NEW listings. Each takes (search, query) and returns
+# listings: {"listing_id", "name", "url", "in_stock", ...}; optional "listed_at"
+# (epoch seconds) lets the scheduler skip a separate "how old is it" lookup.
+SEARCHERS = {
+    "shopify": lambda search, query: shopify.search_listings(search.store_url, query),
+    "walmart": walmart.search_listings,
+}
+
 MONITORS = {
     "demo": demo.check_product,
     "shopify": shopify.check_product,

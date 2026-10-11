@@ -8,6 +8,12 @@ discord:
   # health_channel_id: 0   # private channel for "monitor is failing" warnings (default: alert channel)
   # alert_role_id: 0       # role to @mention on restock alerts
   vote_reactions: true     # add ✅/❌ under each alert so people can vote on whether it's legit
+  # Send every alert from a retailer to its own channel (and optionally ping its own role).
+  # A search's/product's own channel_id still wins. 0 = use alert_channel_id.
+  retailer_channels:
+    walmart: 1558948728990203904   # #walmart
+  # retailer_roles:
+  #   walmart: 0           # role to @mention for Walmart alerts only
 
 # Watch a Shopify store's search: alerts when a NEW matching listing appears, and when
 # a listing goes from unavailable to available. The first check only records what's
@@ -63,6 +69,26 @@ searches:
     require_all: *pokemon_require
     include_any: *sealed_types
     exclude: *pokemon_exclude
+
+  # Walmart: catches NEW listings through the Walmart.io API (same .env keys as the
+  # Walmart products below). Walmart's own listings only, newest first. Runs every 5 min
+  # because of Walmart's 5,000 calls/day: each query = 288 calls/day at 300s.
+  # The broad queries catch any new set; the specific ones make sure a busy reseller
+  # day can't push a 30th Celebration listing out of the top 25.
+  - id: "walmart"
+    retailer: "walmart"
+    queries:
+      - "pokemon elite trainer box"
+      - "pokemon booster bundle"
+      - "pokemon 30th celebration elite trainer box"
+      - "pokemon 30th celebration booster bundle"
+    require_all: *pokemon_require
+    include_any: *sealed_types
+    exclude: *pokemon_exclude
+    # check_every_seconds: 300   # lower = faster alerts, more API calls
+    # max_price: 69.99           # skip listings priced above this
+    # allow_marketplace: false   # true = third-party sellers count too
+    # sort: "new"                # Walmart search order; "relevance" if "new" ever errors
 
 # Single product pages to watch (optional; the searches above already cover these stores).
 products:

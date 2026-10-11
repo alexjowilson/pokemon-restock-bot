@@ -249,3 +249,34 @@ async def search_many(queries, per_query: int = 10) -> tuple:
             failed.append((query, str(e)))
     results = sorted(merged.values(), key=lambda r: (not r["first_party"], not r["available"]))
     return results, failed
+
+
+# ---------- new-listing searches (searches: with retailer: "walmart") ----------
+
+async def search_listings(search, query: str) -> list:
+    """One signed search call, newest listings first, shaped for the scheduler.
+
+    Walmart's own listings only, unless the search sets allow_marketplace: true, so
+    a reseller posting a 30th ETB at $150 never shows up as a "new listing". If
+    Walmart later starts selling it, it appears then, which is when you want to know.
+    """
+    opts = search.options
+    data = await _signed_get(SEARCH_URL, {"query": query, "numItems": "25",
+                                          "sort": str(opts.get("sort", "new"))})
+    listings = []
+    for item in _search_items_from(data):
+        if not item.get("itemId") or not item.get("name"):
+            continue
+        if not opts.get("allow_marketplace") and not is_first_party(item):
+            continue
+        parsed = parse_item(item, opts)
+        listings.append({
+            "listing_id": str(item["itemId"]),
+            "name": item["name"],
+            "url": item_url(item["itemId"]),
+            "in_stock": parsed["in_stock"],
+            "price": parsed["price"],
+            "image_url": parsed["image_url"],
+            "cart_url": parsed["cart_url"],
+        })
+    return listings

@@ -6,7 +6,7 @@ import bot.scheduler as sched
 from bot.notifier import build_alert
 from monitors.errors import CheckFailed
 from monitors.shopify import parse_search_results
-from utils.config import Search
+from utils.config import Search, Settings
 
 STORE = "https://cards.example.com"
 
@@ -55,7 +55,7 @@ def _pass(monkeypatch, state, responses, sent, now=1000.0, fail_alert=False):
             raise RuntimeError("discord down")
         sent.append((a["kind"], a["name"], a["store_name"]))
 
-    monkeypatch.setattr(sched, "search_listings", fake_search)
+    monkeypatch.setitem(sched.SEARCHERS, "shopify", lambda s, q: fake_search(s.store_url, q))
     asyncio.run(sched.run_search_checks([SEARCH], state, send_alert, {}, None, now=now))
 
 
@@ -115,7 +115,7 @@ def test_adding_a_keyword_later_does_not_flood(monkeypatch):
         async def send_alert(a):
             sent.append((a["kind"], a["name"]))
 
-        monkeypatch.setattr(sched, "search_listings", fake_search)
+        monkeypatch.setitem(sched.SEARCHERS, "shopify", lambda s, q: fake_search(s.store_url, q))
         asyncio.run(sched.run_search_checks([search], state, send_alert, {}, None, now=1.0))
 
     run(SEARCH, {"30th celebration": sr((1, "30th ETB", True))})          # baseline 30th
@@ -139,14 +139,13 @@ def test_store_channel_and_role_are_passed_to_alerts(monkeypatch):
         sent.append((a["channel_id"], a["role_id"]))
 
     responses = [sr(), sr((9, "30th Celebration UPC", True))]
-    monkeypatch.setattr(sched, "search_listings", fake_search)
+    monkeypatch.setitem(sched.SEARCHERS, "shopify", lambda s, q: fake_search(s.store_url, q))
     for _ in range(2):
         asyncio.run(sched.run_search_checks([routed], state, send_alert, {}, None, now=1.0))
     assert sent == [(111, 222)]
 
 
 def test_client_routes_alert_to_store_channel():
-    from types import SimpleNamespace
     from bot.client import RestockBot
     import bot.client as client_mod
 
@@ -159,14 +158,18 @@ def test_client_routes_alert_to_store_channel():
         return f"channel-{cid}"
 
     bot = RestockBot.__new__(RestockBot)
-    bot.settings = SimpleNamespace(alert_channel_id=1, alert_role_id=5, vote_reactions=True)
+    bot.settings = Settings(discord_token="t", app_id=1, alert_channel_id=1, guild_id=None,
+                            health_channel_id=None, alert_role_id=5, check_interval_seconds=60,
+                            products=[], retailer_channels={"bestbuy": 333})
     orig = client_mod.send_restock_alert
     client_mod.send_restock_alert = fake_send
     RestockBot._channel, orig_channel = fake_channel, RestockBot._channel
     try:
         asyncio.run(bot.alert({"name": "x", "url": "u", "channel_id": 111, "role_id": 222}))
         asyncio.run(bot.alert({"name": "x", "url": "u", "channel_id": None, "role_id": None}))
+        asyncio.run(bot.alert({"name": "x", "url": "u", "retailer": "bestbuy"}))
+        asyncio.run(bot.alert({"name": "x", "url": "u", "retailer": "bestbuy", "channel_id": 111}))
     finally:
         client_mod.send_restock_alert = orig
         RestockBot._channel = orig_channel
-    assert calls == [("channel-111", 222), ("channel-1", 5)]
+    assert calls == [("channel-111", 222), ("channel-1", 5), ("channel-333", 5), ("channel-111", 5)]
