@@ -80,6 +80,7 @@ searches:
   # alerts the moment Walmart itself sells it. Alerts go to retailer_channels.walmart.
   - id: "walmart"                       # keep this id: saved history uses it
     retailer: "walmart"
+    store_name: "Walmart · new listings"
     sort: "new"
     queries:
       - "pokemon elite trainer box"
@@ -91,6 +92,7 @@ searches:
 
   - id: "walmart_sets"
     retailer: "walmart"
+    store_name: "Walmart · sets"
     sort: "relevance"
     auto_watch: true
     auto_watch_max_total: 40            # Walmart items watched every minute, incl. products below

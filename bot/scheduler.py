@@ -219,7 +219,7 @@ async def run_search_checks(
 
             if kind:
                 alert = {k: v for k, v in listing.items()
-                         if k not in ("queries", "listed_at", "quiet_new", "first_party")}
+                         if k not in ("queries", "listed_at", "quiet_new", "first_party", "note")}
                 try:
                     await send_alert({**alert, "id": f"{search.id}:{lid}", "kind": kind,
                                       "retailer": search.retailer, "store_name": search.store_name,

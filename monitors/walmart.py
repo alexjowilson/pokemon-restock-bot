@@ -285,5 +285,6 @@ async def search_listings(search, query: str) -> list:
             "price": parsed["price"],
             "image_url": parsed["image_url"],
             "cart_url": parsed["cart_url"],
+            "note": parsed["note"],  # "only resellers" / "over max $..." for /checknow
         })
     return listings

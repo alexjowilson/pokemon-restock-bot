@@ -73,15 +73,25 @@ def format_product_block(store: str, rows: list) -> str:
 def format_search_block(store_name: str, listings: list, limit: int = 25,
                         only_in_stock: bool = False) -> str:
     """In-stock first. Every row links to the listing so you can check it yourself."""
-    ordered = sorted(listings, key=lambda x: not x["in_stock"])
+    # In stock, then buyable-but-doesn't-count (resellers / over max price), then sold out.
+    ordered = sorted(listings, key=lambda x: (not x["in_stock"], not x.get("note")))
     in_stock = sum(1 for x in listings if x["in_stock"])
+    noted = sum(1 for x in listings if not x["in_stock"] and x.get("note"))
     shown = [x for x in ordered if x["in_stock"]] if only_in_stock else ordered
     rows = []
     for x in shown[:limit]:
         price = f" · {_price(x.get('price'))}" if x.get("price") is not None else ""
-        rows.append(f"{'✅' if x['in_stock'] else '❌'} [{x['name']}](<{x['url']}>){price}")
+        link = f"[{x['name']}](<{x['url']}>)"
+        if not x["in_stock"] and x.get("note"):
+            rows.append(f"🟡 {link} · {x['note']}{price.replace(' · ', ' ')}")
+        else:
+            rows.append(f"{'✅' if x['in_stock'] else '❌'} {link}{price}")
     more = [f"…and {len(shown) - limit} more"] if len(shown) > limit else []
-    header = f"🔎 **{store_name}**: {in_stock} in stock, {len(listings) - in_stock} sold out"
+    parts = [f"{in_stock} in stock"]
+    if noted:
+        parts.append(f"{noted} resellers only")
+    parts.append(f"{len(listings) - in_stock - noted} sold out")
+    header = f"🔎 **{store_name}**: {', '.join(parts)}"
     return "\n".join([header] + rows + more)
 
 

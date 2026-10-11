@@ -109,6 +109,19 @@ def test_checknow_links_in_stock_items_first():
     assert only == "🔎 **Card Shop**: 0 in stock, 1 sold out"
 
 
+def test_checknow_marks_reseller_only_listings():
+    from bot.commands import format_search_block
+    block = format_search_block("Walmart · sets", [
+        {"name": "ETB", "url": "u1", "in_stock": False, "price": 374.14, "note": "only resellers"},
+        {"name": "BB", "url": "u2", "in_stock": False, "price": 26.94},
+    ])
+    assert block.split("\n") == [
+        "🔎 **Walmart · sets**: 0 in stock, 1 resellers only, 1 sold out",
+        "🟡 [ETB](<u1>) · only resellers $374.14",
+        "❌ [BB](<u2>) · $26.94",
+    ]
+
+
 def test_checknow_filter_words():
     from bot.commands import matches_filter
     assert matches_filter("Pokémon TCG: 30th Celebration: Elite Trainer Box", "30th celebration")

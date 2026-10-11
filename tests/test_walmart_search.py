@@ -39,7 +39,7 @@ def test_search_listings_shape_and_newest_first(api):
     assert x == {"listing_id": "1", "first_party": True, "quiet_new": False,
                  "name": "Pokemon 30th ETB", "url": "https://www.walmart.com/ip/1",
                  "in_stock": True, "price": 49.97, "image_url": "https://img/1.jpg",
-                 "cart_url": "https://affil.walmart.com/cart?items=1"}
+                 "cart_url": "https://affil.walmart.com/cart?items=1", "note": None}
     assert api.calls[0] == {"query": "pokemon etb", "numItems": "25", "sort": "new"}
 
 
