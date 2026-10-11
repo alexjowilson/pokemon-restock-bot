@@ -168,7 +168,7 @@ def test_reseller_note_and_checknow_block():
         "🏪 **Walmart**: 1 in stock, 1 resellers only",
         f"✅ [30th Celebration ETB](<{URL}>) · $49.97",
         f"🟡 [30th Celebration ETB](<{URL}>) · only resellers $237.98",
-        f"❌ [30th Celebration ETB](<{URL}>)",
+        f"❌ [30th Celebration ETB](<{URL}>) · sold out",
         "⚠️ 30th Celebration ETB: `HTTP 401`",
     ]
 

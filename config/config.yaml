@@ -121,6 +121,18 @@ products:
     retailer: "walmart"
     url: "https://www.walmart.com/ip/Pokemon-TCG-30th-Anniversary-Booster-Bundle-Box/20717271194"
 
+# MSRP by product type, used to judge prices: /checknow and alerts show e.g.
+# "🔴 +215% vs $26.94 MSRP" (🟢 within 15%, 🟡 within 50%, 🔴 more).
+# A product's own `msrp:` (under walmart_watch or products:) overrides this.
+msrp:
+  elite trainer box: 49.99
+  booster bundle: 26.94
+
+# Optional: also alert in #walmart when a RESELLER on a watched Walmart page asks
+# within this % of MSRP (e.g. 15 -> an ETB at $57.49 or less). Off until set.
+# reseller_deals:
+#   max_over_msrp_pct: 15
+
 # Walmart pages to watch, grouped by product. Walmart lists the same box on several
 # pages (its own + resellers'); the bot checks every page each minute in batched
 # lookups (20 pages per API call) and alerts when Walmart ITSELF sells one, at or

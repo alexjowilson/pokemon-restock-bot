@@ -125,6 +125,24 @@ def _id_map(raw, what: str) -> dict:
     return {str(k).lower(): v for k, raw_v in raw.items() if (v := _optional_int(raw_v))}
 
 
+def _with_msrp(products, table, deals: dict) -> list:
+    """Give every product an `msrp` (its own, or by type from the table) and the
+    reseller-deal threshold, so checks and alerts can compare prices."""
+    from utils.pricing import DEFAULT_MSRP, msrp_for
+    table = {str(k).lower(): float(v) for k, v in (table or DEFAULT_MSRP).items()}
+    deal_pct = deals.get("max_over_msrp_pct") if deals.get("enabled", True) else None
+    out = []
+    for p in products:
+        msrp = msrp_for(p.name, p.extra.get("msrp"), table)
+        extra = dict(p.extra)
+        if msrp is not None:
+            extra["msrp"] = msrp
+            if deal_pct is not None and p.retailer == "walmart":
+                extra["deal_pct"] = float(deal_pct)
+        out.append(Product(id=p.id, name=p.name, retailer=p.retailer, url=p.url, extra=extra))
+    return out
+
+
 def _walmart_watch(entries, configured) -> list:
     """Expand `walmart_watch:` groups (one product name, several Walmart pages) into products.
 
@@ -142,7 +160,7 @@ def _walmart_watch(entries, configured) -> list:
         ids = entry.get("item_ids") or []
         if not name or not ids:
             raise RuntimeError("Each walmart_watch entry needs a `name` and `item_ids`")
-        options = {k: v for k, v in entry.items() if k in ("max_price", "allow_marketplace")}
+        options = {k: v for k, v in entry.items() if k in ("max_price", "allow_marketplace", "msrp")}
         for raw_id in ids:
             item_id = str(int(raw_id))
             if item_id in taken:
@@ -193,6 +211,7 @@ def load_settings(config_path: Path = DEFAULT_CONFIG_PATH) -> Settings:
         products.append(Product(id=pid, name=p.pop("name"), retailer=retailer, url=url, extra=p))
 
     products += _walmart_watch(raw.get("walmart_watch") or [], products)
+    products = _with_msrp(products, raw.get("msrp"), raw.get("reseller_deals") or {})
 
     searches = []
     for raw_search in raw.get("searches", []) or []:

@@ -12,6 +12,7 @@ Every alert includes the price, a product image, a buy link (straight to the car
 - 🔁 **Restock alerts:** fires when a known listing goes from sold out to available
 - 🏬 **Walmart watch list:** every set's ETB and Booster Bundle pages (Walmart's own and resellers') are checked every minute in batched lookups, and you hear about it the moment Walmart itself sells one
 - 🚫 **Scalper filter:** a Walmart item only counts as in stock when Walmart itself sells it, with an optional `max_price`
+- 📊 **MSRP check:** every price is compared to MSRP (🟢 / 🟡 / 🔴), with optional alerts when a reseller drops near MSRP
 - 🎯 **Precise filtering:** only Pokémon ETBs and Booster Bundles; single cards, other games and accessories are ignored
 - 📺 **Channel per retailer:** for example, every Walmart alert goes to `#walmart`, with optional role pings per retailer or store
 - 🛒 **Quick buy links:** links go straight to the cart when the store allows it
@@ -78,6 +79,8 @@ That's about **3,170 calls a day**, which leaves headroom for `/walmartfind`. Th
 **Why several pages per product:** Walmart often lists the same box on several pages. Usually one is Walmart's own and the rest are resellers', and which page Walmart sells from can change. Watching them all means whichever one Walmart restocks is caught. The alert uses the clean product name from the config.
 
 **Resellers:** a page sold only by a third party counts as **not in stock**, so it never alerts. If Walmart itself starts selling that page, the next minute's check sees "sold out → in stock" and alerts. `max_price` adds a second guard: a listing above it doesn't count either.
+
+**Price check vs MSRP:** every product has an MSRP. It defaults by type (ETB $49.99, Booster Bundle $26.94), and `msrp:` overrides it per product. `/checknow` and alerts compare each price to it: 🟢 within 15% of MSRP, 🟡 within 50%, 🔴 beyond. Set `reseller_deals: {max_over_msrp_pct: 15}` to also get a 💸 alert when a reseller on a watched page drops close to MSRP. It fires once when the price comes into range, and again only if it leaves and returns.
 
 **Quiet start:** the first check of a newly added page only records its state, so adding 40 pages never floods the channel. A page Walmart removes reads as unavailable instead of an error.
 
@@ -146,6 +149,7 @@ pokemon-restock-bot/
 │  └─ walmart_probe.py   # Shows what Walmart's search returns for a query
 ├─ utils/
 │  ├─ config.py          # Loads config.yaml + .env into typed settings; API budget check
+│  ├─ pricing.py         # MSRP lookup and 🟢/🟡/🔴 price verdicts
 │  ├─ state.py           # Reads/writes data/state.json atomically
 │  └─ text.py            # Accent-insensitive title matching
 ├─ config/config.yaml    # What to watch: stores, sets, filters, channels
@@ -383,7 +387,7 @@ pip install pytest
 pytest
 ```
 
-There are 97 tests. They cover alert de-duplication, new-listing and restock detection, the quiet first pass, backoff and health alerts, and title filtering. They also cover Shopify, Best Buy and Walmart response parsing, Walmart request signing and batching, the reseller and `max_price` rules, the Walmart watch list, the API call budget, per-retailer channel routing, the alert layout, and HTTP status handling against a real local server.
+There are 104 tests. They cover alert de-duplication, new-listing and restock detection, the quiet first pass, backoff and health alerts, and title filtering. They also cover Shopify, Best Buy and Walmart response parsing, Walmart request signing and batching, the reseller and `max_price` rules, MSRP comparison and reseller-deal alerts, the Walmart watch list, the API call budget, per-retailer channel routing, the alert layout, and HTTP status handling against a real local server.
 
 ---
 

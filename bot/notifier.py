@@ -6,6 +6,8 @@ from typing import Optional
 
 import discord
 
+from utils.pricing import verdict
+
 log = logging.getLogger(__name__)
 
 RETAILER_NAMES = {"bestbuy": "Best Buy", "walmart": "Walmart", "shopify": "Shop", "demo": "Demo"}
@@ -17,21 +19,26 @@ def build_alert(product: dict, role_id: Optional[int] = None, now: Optional[floa
     ts = int(now if now is not None else time.time())
     in_stock = product.get("in_stock", True)
     is_new = product.get("kind") == "new"
+    is_deal = product.get("kind") == "deal"
     buy_url = product.get("cart_url") or product["url"]
     store = product.get("store_name") or RETAILER_NAMES.get(product.get("retailer"), product.get("retailer"))
 
     ping = f"<@&{role_id}> " if role_id else ""
-    label = "🆕 New listing: " if is_new else ""
-    link = "Buy Now" if in_stock else "View"
+    label = "🆕 New listing: " if is_new else ("💸 Reseller near MSRP: " if is_deal else "")
+    link = "Buy Now" if in_stock or is_deal else "View"
     content = f"{ping}{label}{product['name']} [{link}](<{buy_url}>)"  # <...> stops Discord adding a link preview
 
     when = f"(<t:{ts}:T> • <t:{ts}:R>)"  # Discord renders these in each viewer's timezone
-    status = f"✅ In Stock {when}" if in_stock else f"⏳ Listed, not available yet {when}"
+    if is_deal:
+        status = f"🔁 Sold by a reseller {when}"
+    else:
+        status = f"✅ In Stock {when}" if in_stock else f"⏳ Listed, not available yet {when}"
     lines = [status, f"🔗 [{'Click here to buy' if in_stock else 'Product page'}]({buy_url})"]
     if product.get("cart_url"):
         lines.append(f"📄 [Product page]({product['url']})")
     if product.get("price") is not None:
-        lines.append(f"💲 Price: ${product['price']:.2f}")
+        compare = verdict(product["price"], product.get("msrp"))
+        lines.append(f"💲 Price: ${product['price']:.2f}" + (f" ({compare})" if compare else ""))
     if str(product.get("stock_level") or "").lower() in ("limited supply", "last few items"):
         lines.append(f"🔥 {product['stock_level']}: move fast")
     lines.append(f"🏪 {store or 'unknown'}")
@@ -40,7 +47,8 @@ def build_alert(product: dict, role_id: Optional[int] = None, now: Optional[floa
         title=product["name"],
         url=product["url"],
         description="\n".join(lines),
-        color=discord.Color.green() if in_stock else discord.Color.gold(),
+        color=(discord.Color.green() if in_stock
+               else discord.Color.blurple() if is_deal else discord.Color.gold()),
     )
     if product.get("image_url"):
         embed.set_thumbnail(url=product["image_url"])

@@ -18,6 +18,7 @@ from bot import autowatch
 from monitors import MONITORS, SEARCHERS
 from monitors.errors import Blocked, CheckFailed
 from monitors.shopify import listing_age_hours
+from utils.pricing import is_deal
 from utils.text import title_matches
 from utils.config import Product
 from utils.state import load_state, save_state
@@ -96,18 +97,30 @@ async def run_checks(
         # alerting, so adding 40 pages never posts the ones already in stock as "restocks".
         first_look = not prev and product.extra.get("baseline_first")
 
+        # A reseller asking close to MSRP (opt-in: reseller_deals in config.yaml). Alerts
+        # once when the price drops into range, again only after it leaves and returns.
+        deal = (not in_stock and result.get("note") == "only resellers"
+                and is_deal(result.get("price"), product.extra.get("msrp"),
+                            product.extra.get("deal_pct")))
+
+        alert = None
         if in_stock and not was_in_stock and not first_look:
+            alert = {**product.as_dict(), **result}
+        elif deal and not prev.get("deal") and not first_look:
+            alert = {**product.as_dict(), **result, "kind": "deal"}
+        if alert:
             try:
-                await send_alert({**product.as_dict(), **result})
-                log.info("Alert sent for %s", product.id)
+                await send_alert(alert)
+                log.info("%s alert sent for %s", alert.get("kind", "restock"), product.id)
             except Exception:
-                # Don't record it as in stock, so we retry the alert next pass.
+                # Don't record the new state, so the alert is retried next pass.
                 log.exception("Failed to send alert for %s", product.id)
                 continue
-        elif was_in_stock and not in_stock:
+        if was_in_stock and not in_stock:
             log.info("%s went out of stock", product.id)
 
         state[product.id] = {
+            "deal": deal,
             "in_stock": in_stock,
             "price": result.get("price"),
             "last_checked": int(now),

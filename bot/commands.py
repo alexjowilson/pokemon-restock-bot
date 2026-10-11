@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 
 import discord
 
+from utils.pricing import verdict
+
 from bot.notifier import RETAILER_NAMES
 from bot.scheduler import check_once, search_once
 from monitors import walmart
@@ -49,11 +51,14 @@ def format_product_row(product, result: dict) -> str:
     """One linked row for a single-product monitor. Always a link, even when only resellers have it."""
     link = f"[{product.name}](<{product.url}>)"  # <...> stops Discord adding a big link preview
     price = _price(result.get("price"))
+    extra = getattr(product, "extra", {}) or {}
+    compare = verdict(result.get("price"), extra.get("msrp"))
+    compare = f" ({compare})" if compare else ""
     if result["in_stock"]:
-        return f"✅ {link}" + (f" · {price}" if price else "")
+        return f"✅ {link}" + (f" · {price}{compare}" if price else "")
     if result.get("note"):
-        return f"🟡 {link} · {result['note']}" + (f" {price}" if price else "")
-    return f"❌ {link}"
+        return f"🟡 {link} · {result['note']}" + (f" {price}{compare}" if price else "")
+    return f"❌ {link} · sold out"
 
 
 def format_product_block(store: str, rows: list) -> str:
