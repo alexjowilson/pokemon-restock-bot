@@ -98,11 +98,12 @@ def parse_item(item: dict, product: dict) -> dict:
     stock = str(item.get("stock") or "").strip().lower()
 
     in_stock = bool(item.get("availableOnline")) and stock in IN_STOCK_VALUES
+    note = None
     if in_stock and not product.get("allow_marketplace") and not is_first_party(item):
-        in_stock = False  # a reseller has it, not Walmart
+        in_stock, note = False, "only resellers"  # a reseller has it, not Walmart
     max_price = product.get("max_price")
     if in_stock and max_price is not None and price is not None and price > float(max_price):
-        in_stock = False  # marked up: not the restock we want
+        in_stock, note = False, f"over max ${float(max_price):.2f}"  # marked up
 
     return {
         "in_stock": in_stock,
@@ -111,6 +112,7 @@ def parse_item(item: dict, product: dict) -> dict:
         "cart_url": item.get("addToCartUrl") if in_stock else None,
         "seller": item.get("sellerInfo") or "Walmart",
         "stock_level": item.get("stock"),
+        "note": note,  # why a buyable listing doesn't count (shown in /checknow)
     }
 
 

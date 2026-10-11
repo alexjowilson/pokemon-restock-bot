@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import discord
 
+from bot.notifier import RETAILER_NAMES
 from bot.scheduler import check_once, search_once
 from monitors.errors import CheckFailed
 
@@ -31,6 +32,23 @@ def chunk_messages(blocks, limit: int = 1900) -> list:
     if current:
         messages.append(current)
     return messages
+
+
+def store_label(product) -> str:
+    extra = getattr(product, "extra", {}) or {}
+    return extra.get("store_name") or RETAILER_NAMES.get(product.retailer, product.retailer)
+
+
+def format_product_line(product, result: dict) -> str:
+    """One /checknow line for a single-product monitor, labelled with its store."""
+    price = result.get("price")
+    if result["in_stock"]:
+        status = "✅ in stock" + (f" at ${price:.2f}" if price is not None else "")
+    elif result.get("note"):
+        status = f"❌ out of stock ({result['note']}" + (f": ${price:.2f}" if price is not None else "") + ")"
+    else:
+        status = "❌ out of stock" + (f" at ${price:.2f}" if price is not None else "")
+    return f"🏪 **{store_label(product)}** · {status}: {product.name}"
 
 
 def format_search_block(store_name: str, listings: list, limit: int = 25) -> str:
@@ -109,9 +127,8 @@ def register_commands(bot: RestockBot) -> None:
             try:
                 r = await check_once(p)
             except CheckFailed as e:
-                return f"⚠️ **{p.name}**: `{e}`"
-            price = f" at ${r['price']:.2f}" if r.get("price") is not None else ""
-            return f"{'✅ in stock' if r['in_stock'] else '❌ out of stock'}{price}: **{p.name}**"
+                return f"⚠️ 🏪 {store_label(p)}: **{p.name}**: `{e}`"
+            return format_product_line(p, r)
 
         async def one_search(srch):
             try:

@@ -148,3 +148,22 @@ def test_check_product_no_items(monkeypatch, tmp_path):
     monkeypatch.setattr(walmart.http, "get_json", fake_get_json)
     with pytest.raises(CheckFailed, match="no item"):
         asyncio.run(walmart.check_product({"url": URL}))
+
+
+# ---------- /checknow lines ----------
+
+def test_reseller_note_and_checknow_line():
+    from bot.commands import format_product_line
+    from utils.config import Product
+
+    r = walmart.parse_item(item(marketplace=True, sellerInfo="Flipper LLC", salePrice=237.98), {"url": URL})
+    assert r["note"] == "only resellers"
+    p = Product(id="wm", name="30th Celebration Elite Trainer Box", retailer="walmart", url=URL)
+    assert format_product_line(p, r) == (
+        "🏪 **Walmart** · ❌ out of stock (only resellers: $237.98): 30th Celebration Elite Trainer Box")
+
+    r = walmart.parse_item(item(), {"url": URL})
+    assert format_product_line(p, r) == "🏪 **Walmart** · ✅ in stock at $49.97: 30th Celebration Elite Trainer Box"
+
+    r = walmart.parse_item(item(salePrice=89.99), {"url": URL, "max_price": 59.99})
+    assert r["note"] == "over max $59.99"
